@@ -1,5 +1,6 @@
 from read_testcase import readCase
 import numpy as np
+from math import cos, sin, pi, radians
 busNumber = 0
 busArea = 2
 busZone = 3
@@ -35,10 +36,19 @@ Ybus = np.zeros((n, n)) + np.zeros((n, n))*1j
 branchZ = branchData[:, branchR] + branchData[:, branchX]*1j
 branchY = branchZ**-1
 
+ratio = np.where(branchData[:, branchTurnsRatio]==0.0, 1, branchData[:, branchTurnsRatio])
+shift = np.radians(branchData[:, branchPhaseShift])
+tap = ratio*np.cos(shift) + 1j*ratio*np.sin(shift)
+#tap = np.where(tap == 0, 1, tap)
+
 for i in range(len(branchData[:, branchTapBus])):
 	fbus = int(branchData[i, branchTapBus])-1
 	tbus = int(branchData[i, branchZBus]) - 1
-	Ybus[tbus, fbus] = -branchY[i]
-	Ybus[fbus, tbus] = -branchY[i]
+	Ybus[tbus, fbus] = -branchY[i]/np.conj(tap[i])
+	Ybus[fbus, tbus] = -branchY[i]/tap[i]
+for i in range(len(busData[:, 0])):
+	bus = int(busData[i, busNumber])-1
+	Ybus[bus, bus] =-np.sum(Ybus[:,bus]) + busData[bus, busShuntConductance] + busData[bus, busShuntSusceptance]*1j
+
 np.set_printoptions(linewidth=np.inf)
 print(Ybus)
