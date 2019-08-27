@@ -33,7 +33,7 @@ def readCase(filename):
 				busData[j, 9] = float(line[60:67])
 				busData[j, 10] = float(line[68:75])
 				busData[j, 11] = float(line[77:83])
-				busData[j, 12] = float(line[85:90])
+				busData[j, 12] = float(line[84:90])
 				busData[j, 13] = float(line[91:98])
 				busData[j, 14] = float(line[99:106])
 				busData[j, 15] = float(line[107:114])
