@@ -20,5 +20,5 @@ def mismatch(v, d, y, pq, pv, psched, qsched):
 	qcalc = s[pq].imag
 	dp = psched-pcalc
 	dq = qsched-qcalc
-	mis = np.concatenate((dp, dq))
+	mis = np.transpose(np.concatenate((dp, dq)))
 	return mis, pcalc, qcalc

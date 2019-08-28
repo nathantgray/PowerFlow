@@ -1,7 +1,5 @@
 from read_testcase import readCase
-from reorder import reorder
 import numpy as np
-from math import cos, sin, pi, radians
 def makeYbus(filename):
 	busNumber = 0
 	busArea = 2
@@ -47,8 +45,8 @@ def makeYbus(filename):
 	# Create the four entries of a Y-Bus matrix for each line.
 	Ytt = branchY + 1j*branchB/2
 	Yff = Ytt/(abs(tap)**2)
-	Yft = -Ytt/np.conj(tap)
-	Ytf = -Ytt/tap
+	Yft = -branchY/np.conj(tap)
+	Ytf = -branchY/tap
 	# Shunt admittances for each bus.
 	Ysh =  busData[:, busShuntG]+ 1j*busData[:, busShuntB]
 	for i in range(nl):
@@ -61,7 +59,4 @@ def makeYbus(filename):
 	for i in range(n):
 		Ybus[i,i] += Ysh[i]
 
-	#print(Ybus)
-	#print('\n')
-	#print(branchData)
 	return Ybus

@@ -79,6 +79,6 @@ def PF_Jacobian(v, d, y, pq):
 	jtop = np.concatenate((j11, j12), axis=1)
 	jbottom = np.concatenate((j21, j22), axis=1)
 	jacobian = np.concatenate((jtop, jbottom), axis=0)
-	return jacobian, j11, j22, j12, j22
+	return jacobian, j11, j21, j12, j22
 
 
