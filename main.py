@@ -1,10 +1,9 @@
 import numpy as np
 from mismatch import mismatch
 from read_testcase import readCase
-from makeYbus import makeYbus
-from PF_Jacobian import PF_Jacobian
-from PF_NewtonRaphson import PF_NewtonRaphson
-from reorder import reorder
+from makeYbus import makeybus
+# from PF_Jacobian import pf_jacobian
+from PF_NewtonRaphson import pf_newtonraphson
 
 np.set_printoptions(linewidth=np.inf, precision=4, suppress=True)
 
@@ -41,21 +40,22 @@ filename = 'IEEE14BUS_handout.txt'
 busData, branchData = readCase(filename)
 types = busData[:, busType]
 slack = np.where(types == 3)
-pv = np.where(types == 2)[0]
-pq = np.where(types < 2)[0]
-psched = busData[np.concatenate((pv,pq)), busGenMW] - busData[np.concatenate((pv,pq)), busLoadMW]
-qsched =- busData[pq, busLoadMVAR]
-y = makeYbus(filename)
-v = np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])
+pv = np.where(types == 2)[0]  # list of PV bus indices
+pq = np.where(types < 2)[0]  # list of PQ bus indices
+pvpq = np.sort(np.concatenate((pv, pq)))
+psched = np.array([busData[pvpq, busGenMW] - busData[pvpq, busLoadMW]]).transpose()
+qsched = np.array([- busData[pq, busLoadMVAR]]).transpose()
+y = makeybus(filename)
+v = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])]).transpose()
 d = np.zeros_like(v)
 
 
-mis, pcalc, qcalc = mismatch(v, d, y, pq, pv, psched, qsched)
-#print(mis)
+# mis, pcalc, qcalc = mismatch(v, d, y, pq, pv, psched, qsched)
+# print(mis)
 
-j, j11, j21, j12, j22= PF_Jacobian(v, d, y, pq)
-#print(j)
-v, d, it = PF_NewtonRaphson(v, d, y, pq, pv, psched, qsched, prec=2, maxit=5)
+# j, j11, j21, j12, j22= pf_jacobian(v, d, y, pq)
+# print(j)
+v, d, it = pf_newtonraphson(v, d, y, pq, pv, psched, qsched, prec=2, maxit=5)
 mis, pcalc, qcalc = mismatch(v, d, y, pq, pv, psched, qsched)
 print(v)
 print(d)

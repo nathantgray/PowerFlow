@@ -1,6 +1,6 @@
 from read_testcase import readCase
 import numpy as np
-def makeYbus(filename):
+def makeybus(filename):
 	busNumber = 0
 	busArea = 2
 	busZone = 3
