@@ -37,6 +37,7 @@ branchTurnsRatio = 14
 branchPhaseShift = 15
 
 filename = 'IEEE14BUS_handout.txt'
+# filename = 'smallcase.txt'
 busData, branchData = readCase(filename)
 types = busData[:, busType]
 slack = np.where(types == 3)

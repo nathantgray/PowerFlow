@@ -5,20 +5,18 @@ from numpy.linalg import inv
 
 
 def pf_newtonraphson(v, d, y, pq, pv, psched, qsched, prec=2, maxit=4):
-
 	# Uses Newton-Raphson method to solve the power-flow of a power system.
-	# Also capable of Q limiting.
 	# Written by Nathan Gray
 	# Arguments:
+	# v: list of voltage magnitudes in system
 	# d: list of voltage phase angles in system
-	# V: list of voltage magnitudes in system
-	# Y: Ybus matrix for system
-	# PQ: list of PQ buses
-	# PV: list of PV buses
-	# Psched, Qsched: list of real, reactive power injections
+	# y: Ybus matrix for system
+	# pq: list of PQ buses
+	# pv: list of PV buses
+	# psched, qsched: list of real, reactive power injections
 	# prec: program finishes when all mismatches < 10^-abs(prec)
-	pvpq = np.sort(np.concatenate((pv, pq)))
 
+	pvpq = np.sort(np.concatenate((pv, pq)))
 	n = np.shape(y)[0]
 	# Newton Raphson
 	it = 0

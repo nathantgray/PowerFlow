@@ -6,10 +6,10 @@ def pf_jacobian(v, d, y, pq):
 	# "Power Systems Analysis" J. Grainger et al.
 	# Calculates the Jacobian Matrix for use in the Newton-Raphson Method.
 	# Arguments:
-	# PQ: List of PQ buses
-	# Y: Ybus matrix
-	# V: Voltage magnitudes
+	# v: Voltage magnitudes
 	# d: Voltage phase angles
+	# y: Ybus matrix
+	# pq: List of PQ buses
 	n = y.shape[0]
 	s = (v * np.exp(1j * d)) * np.conj(np.dot(y, v * np.exp(1j * d)))
 	p = s.real
@@ -22,7 +22,7 @@ def pf_jacobian(v, d, y, pq):
 		j = col[a]
 		if i != 0 and j != 0:
 			if i == j:
-				j11[i-1, j-1] = q[i] - v[i]**2*y[i, i].imag
+				j11[i-1, j-1] = - q[i] - v[i]**2*y[i, i].imag
 			else:
 				j11[i-1, j-1] = -abs(v[i]*v[j]*y[i, j])*np.sin(np.angle(y[i, j]) + d[j] - d[i])
 
@@ -34,7 +34,7 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(index.shape[0]):
 		i = index[a, 0]
 		j = index[a, 1]
-		k = np.where(pq == i)
+		k: int = np.where(pq == i)  # map bus index to jacobian index
 		if i == j:
 			j21[k, j-1] = p[i] - abs(v[i])**2*y[i, j].real
 		else:
@@ -48,7 +48,7 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(index.shape[0]):
 		i = index[a, 0]
 		j = index[a, 1]
-		l: int = np.where(pq == j)
+		l: int = np.where(pq == j)  # map bus index to jacobian index
 		if i == j:
 			j12[i - 1, l] = p[i] + abs(v[i]**2*y[i, j].real)
 		else:
@@ -62,8 +62,8 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(index.shape[0]):
 		i = index[a, 0]
 		j = index[a, 1]
-		k: int = np.where(pq == i)
-		l: int = np.where(pq == j)
+		k: int = np.where(pq == i)  # map bus index to jacobian index
+		l: int = np.where(pq == j)  # map bus index to jacobian index
 		if i == j:
 			j22[k, l] = -j11[i-1, j-1] - 2*abs(v[i])**2*y[i, j].imag
 		else:
