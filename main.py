@@ -43,8 +43,8 @@ types = busData[:, busType]
 slack = np.where(types == 3)
 pv = np.where(types == 2)[0]
 pq = np.where(types < 2)[0]
-psched = np.array([busData[np.concatenate((pv,pq)), busGenMW] - busData[np.concatenate((pv,pq)), busLoadMW]])
-qsched = np.array([- busData[pq, busLoadMVAR]])
+psched = busData[np.concatenate((pv,pq)), busGenMW] - busData[np.concatenate((pv,pq)), busLoadMW]
+qsched =- busData[pq, busLoadMVAR]
 y = makeYbus(filename)
 v = np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])
 d = np.zeros_like(v)
