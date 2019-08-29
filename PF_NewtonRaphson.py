@@ -37,4 +37,3 @@ def pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=2, maxit=4):
 		v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
 
 	print("Max iterations reached, ", it, ".")
-

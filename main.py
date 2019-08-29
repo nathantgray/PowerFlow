@@ -34,22 +34,27 @@ branchTurnsRatio = 14
 branchPhaseShift = 15
 
 filename = 'IEEE14BUS.txt'
+
 # Load case data
 busData, branchData, p_base = readCase(filename)
+
 # Get bus types
 types = busData[:, busType]
 slack = np.where(types == 3)
 pv = np.where(types == 2)[0]  # list of PV bus indices
 pq = np.where(types < 2)[0]  # list of PQ bus indices
 pvpq = np.sort(np.concatenate((pv, pq)))  # list of indices of non-slack buses
+
 # Calculate scheduled P and Q for each bus
 mw_gen = busData[pvpq, busGenMW]
 mw_load = busData[pvpq, busLoadMW]
 mvar_load = busData[pq, busLoadMVAR]
 psched = np.array([mw_gen - mw_load]).transpose()/p_base
 qsched = np.array([- mvar_load]).transpose()/p_base
+
 # Make the Y-bus matrix
 y = makeybus(busData, branchData)
+
 # Initialize with flat start
 v = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])]).transpose()
 d = np.zeros_like(v)

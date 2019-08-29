@@ -1,7 +1,12 @@
 import numpy as np
 
 
-def makeybus(busData, branchData):
+def makeybus(bus_data, branch_data):
+	# Produces the Y bus matrix of a power system.
+	# Written by Nathan Gray
+	# Arguments:
+	# bus_data: Bus data from the IEEE common data format as a numpy array
+	# branch_data: Branch data from the IEEE common data format as a numpy array
 
 	busShuntG = 15
 	busShuntB = 16
@@ -12,31 +17,35 @@ def makeybus(busData, branchData):
 	branchTurnsRatio = 14
 	branchPhaseShift = 15
 
-	nl = np.shape(branchData)[0]  # number of lines
-	n = np.shape(busData)[0]  # number of buses
-	Ybus = np.zeros((n, n)) + np.zeros((n, n))*1j  # initialize Y Bus Matrix
-	z = branchData[:, branchR] + branchData[:, branchX]*1j
+	z = branch_data[:, branchR] + branch_data[:, branchX] * 1j
 	y = z**-1
-	branchB = branchData[:, branchB]
-	ratio = np.where(branchData[:, branchTurnsRatio] == 0.0, 1, branchData[:, branchTurnsRatio])
-	shift = np.radians(branchData[:, branchPhaseShift])
-	tap = ratio*np.cos(shift) + 1j*ratio*np.sin(shift)
-
-	# Create the four entries of a Y-Bus matrix for each line.
-	Ytt = y + 1j*branchB/2
-	Yff = Ytt/(abs(tap)**2)
-	Yft = -y/np.conj(tap)
-	Ytf = -y/tap
+	b_line = branch_data[:, branchB]
+	ratio = np.where(branch_data[:, branchTurnsRatio] == 0.0, 1, branch_data[:, branchTurnsRatio])
+	shift = np.radians(branch_data[:, branchPhaseShift])
+	t = ratio*np.cos(shift) + 1j*ratio*np.sin(shift)
 	# Shunt admittances for each bus.
-	Ysh = busData[:, busShuntG] + 1j*busData[:, busShuntB]
-	for i in range(nl):
-		frombus = int(branchData[i, 0])-1
-		tobus = int(branchData[i, 1])-1
-		Ybus[frombus, tobus] += Yft[i]
-		Ybus[tobus, frombus] += Ytf[i]
-		Ybus[frombus, frombus] += Yff[i]
-		Ybus[tobus, tobus] += Ytt[i]
-	for i in range(n):
-		Ybus[i, i] += Ysh[i]
+	y_shunt = bus_data[:, busShuntG] + 1j * bus_data[:, busShuntB]
+	frombus = int(branch_data[:, 0])
+	tobus = int(branch_data[:, 1])
 
-	return Ybus
+	nl = branch_data.shape[0]  # number of lines
+	n = bus_data.shape[0]  # number of buses
+	y_bus = np.zeros((n, n)) + np.zeros((n, n))*1j  # initialize Y Bus Matrix
+
+	# The following algorithm takes the arguments: y, b_line, t, y_shunt
+	# Create the four entries of a Y-Bus matrix for each line.
+	yjj = y + 1j*b_line/2
+	yii = yjj/(abs(t)**2)
+	yij = -y/np.conj(t)
+	yji = -y/t
+	for k in range(nl):
+		i = frombus - 1
+		j = tobus - 1
+		y_bus[i, j] = yij[k]
+		y_bus[j, i] = yji[k]
+		y_bus[i, i] += yii[k]
+		y_bus[j, j] += yjj[k]
+	for i in range(n):
+		y_bus[i, i] += y_shunt[i]
+
+	return y_bus

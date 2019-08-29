@@ -1,4 +1,4 @@
-import numpy as np
+from numpy import exp, conj, concatenate
 
 
 def mismatch(v, d, y, pq, pvpq, psched, qsched):
@@ -11,15 +11,15 @@ def mismatch(v, d, y, pq, pvpq, psched, qsched):
 	# d: list of voltage phase angles in system
 	# y: Ybus matrix for system
 	# pq: list of PQ buses
-	# pv: list of PV buses
+	# pvpq: list of PV and pq buses
 	# psched, qsched: list of real, reactive power injections
 
 	# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
-	s = (v*np.exp(1j*d))*np.conj(y.dot(v*np.exp(1j*d)))
+	s = (v*exp(1j*d))*conj(y.dot(v*exp(1j*d)))
 	# S = P + jQ
 	pcalc = s[pvpq].real
 	qcalc = s[pq].imag
 	dp = psched-pcalc
 	dq = qsched-qcalc
-	mis = np.concatenate((dp, dq))
+	mis = concatenate((dp, dq))
 	return mis, pcalc, qcalc
