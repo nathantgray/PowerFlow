@@ -2,7 +2,6 @@ import numpy as np
 from mismatch import mismatch
 from read_testcase import readCase
 from makeYbus import makeybus
-# from PF_Jacobian import pf_jacobian
 from PF_NewtonRaphson import pf_newtonraphson
 
 np.set_printoptions(linewidth=np.inf, precision=4, suppress=True)
@@ -26,10 +25,8 @@ busShuntG = 15
 busShuntB = 16
 busRemoteControlledBusNumber = 17
 
-branchTapBus = 0
-branchZBus = 1
-
-
+branchFromBus = 0
+branchToBus = 1
 branchR = 6
 branchX = 7
 branchB = 8
@@ -37,31 +34,33 @@ branchTurnsRatio = 14
 branchPhaseShift = 15
 
 filename = 'IEEE14BUS.txt'
-# filename = 'smallcase.txt'
-busData, branchData = readCase(filename)
+# Load case data
+busData, branchData, p_base = readCase(filename)
+# Get bus types
 types = busData[:, busType]
 slack = np.where(types == 3)
 pv = np.where(types == 2)[0]  # list of PV bus indices
 pq = np.where(types < 2)[0]  # list of PQ bus indices
 pvpq = np.sort(np.concatenate((pv, pq)))  # list of indices of non-slack buses
-
-psched = np.array([busData[pvpq, busGenMW] - busData[pvpq, busLoadMW]]).transpose()
-qsched = np.array([- busData[pq, busLoadMVAR]]).transpose()
-y = makeybus(filename)
+# Calculate scheduled P and Q for each bus
+mw_gen = busData[pvpq, busGenMW]
+mw_load = busData[pvpq, busLoadMW]
+mvar_load = busData[pq, busLoadMVAR]
+psched = np.array([mw_gen - mw_load]).transpose()/p_base
+qsched = np.array([- mvar_load]).transpose()/p_base
+# Make the Y-bus matrix
+y = makeybus(busData, branchData)
+# Initialize with flat start
 v = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])]).transpose()
 d = np.zeros_like(v)
 
+# Perform the Newton-Raphson method
+v, d, it = pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=4, maxit=5)
 
-# mis, pcalc, qcalc = mismatch(v, d, y, pq, pv, psched, qsched)
-# print(mis)
-
-# j, j11, j21, j12, j22= pf_jacobian(v, d, y, pq)
-# print(j)
-v, d, it = pf_newtonraphson(v, d, y, pq, pv, psched, qsched, prec=2, maxit=5)
-mis, pcalc, qcalc = mismatch(v, d, y, pq, pv, psched, qsched)
-print(v)
-print(d)
-print(it)
-print(mis)
-print(pcalc)
-print(qcalc)
+mis, pcalc, qcalc = mismatch(v, d, y, pq, pvpq, psched, qsched)
+print("Bus voltages: \n", v)
+print("Bus angles (deg): \n", d*180/np.pi)
+print("Iterations: ", it)
+print("Mismatch: \n", mis)
+print("Calculated MW: \n", pcalc*p_base)
+print("Calculated MVAR: \n", qcalc*p_base)

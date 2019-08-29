@@ -11,7 +11,8 @@ def pf_jacobian(v, d, y, pq):
 	# y: Ybus matrix
 	# pq: List of PQ buses
 	n = y.shape[0]
-	s = (v * np.exp(1j * d)) * np.conj(np.dot(y, v * np.exp(1j * d)))
+	# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+	s = (v*np.exp(1j*d))*np.conj(y.dot(v*np.exp(1j*d)))
 	p = s.real
 	q = s.imag
 	# J11
@@ -21,9 +22,9 @@ def pf_jacobian(v, d, y, pq):
 		i = row[a]
 		j = col[a]
 		if i != 0 and j != 0:
-			if i == j:
+			if i == j:  # Diagonals of J11
 				j11[i-1, j-1] = - q[i] - v[i]**2*y[i, i].imag
-			else:
+			else:  # Off-diagonals of J11
 				j11[i-1, j-1] = -abs(v[i]*v[j]*y[i, j])*np.sin(np.angle(y[i, j]) + d[j] - d[i])
 
 	# J21
@@ -36,9 +37,9 @@ def pf_jacobian(v, d, y, pq):
 		j = index[a, 1]
 		if i != 0 and j != 0:
 			k: int = np.where(pq == i)  # map bus index to jacobian index
-			if i == j:
+			if i == j:  # Diagonals of J21
 				j21[k, j-1] = p[i] - abs(v[i])**2*y[i, j].real
-			else:
+			else:  # Off-diagonals of J21
 				j21[k, j-1] = -abs(v[i]*v[j]*y[i, j])*np.cos(np.angle(y[i, j]) + d[j] - d[i])
 
 	# J12
@@ -51,9 +52,9 @@ def pf_jacobian(v, d, y, pq):
 		j = index[a, 1]
 		if i != 0 and j != 0:
 			l: int = np.where(pq == j)  # map bus index to jacobian index
-			if i == j:
+			if i == j:  # Diagonals of J12
 				j12[i - 1, l] = p[i] + abs(v[i]**2*y[i, j].real)
-			else:
+			else:  # Off-diagonals of J12
 				j12[i - 1, l] = abs(v[j]*v[i]*y[i, j])*np.cos(np.angle(y[i, j]) + d[j] - d[i])
 	# J22
 	row, col = np.where(y)
@@ -75,4 +76,4 @@ def pf_jacobian(v, d, y, pq):
 	jtop = np.concatenate((j11, j12), axis=1)
 	jbottom = np.concatenate((j21, j22), axis=1)
 	jacobian = np.concatenate((jtop, jbottom), axis=0)
-	return jacobian, j11, j21, j12, j22
+	return jacobian

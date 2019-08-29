@@ -1,6 +1,14 @@
 import numpy as np
 
 def readCase(filename):
+
+	i = 0
+	with open(filename) as f:
+		for line in f:
+			p_base = float(line[31:37])
+			break
+
+
 	# count rows of bus data
 	i = 0
 	numBusCol = 18
@@ -87,7 +95,7 @@ def readCase(filename):
 
 				j = j + 1
 			i = i + 1
-	return busData, branchData
+	return busData, branchData, p_base
 
 if __name__ == "__main__":
 
