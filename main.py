@@ -36,14 +36,15 @@ branchB = 8
 branchTurnsRatio = 14
 branchPhaseShift = 15
 
-filename = 'IEEE14BUS_handout.txt'
+filename = 'IEEE14BUS.txt'
 # filename = 'smallcase.txt'
 busData, branchData = readCase(filename)
 types = busData[:, busType]
 slack = np.where(types == 3)
 pv = np.where(types == 2)[0]  # list of PV bus indices
 pq = np.where(types < 2)[0]  # list of PQ bus indices
-pvpq = np.sort(np.concatenate((pv, pq)))
+pvpq = np.sort(np.concatenate((pv, pq)))  # list of indices of non-slack buses
+
 psched = np.array([busData[pvpq, busGenMW] - busData[pvpq, busLoadMW]]).transpose()
 qsched = np.array([- busData[pq, busLoadMVAR]]).transpose()
 y = makeybus(filename)

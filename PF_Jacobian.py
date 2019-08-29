@@ -34,11 +34,12 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(index.shape[0]):
 		i = index[a, 0]
 		j = index[a, 1]
-		k: int = np.where(pq == i)  # map bus index to jacobian index
-		if i == j:
-			j21[k, j-1] = p[i] - abs(v[i])**2*y[i, j].real
-		else:
-			j21[k, j-1] = -abs(v[i]*v[j]*y[i, j])*np.cos(np.angle(y[i, j]) + d[j] - d[i])
+		if i != 0 and j != 0:
+			k: int = np.where(pq == i)  # map bus index to jacobian index
+			if i == j:
+				j21[k, j-1] = p[i] - abs(v[i])**2*y[i, j].real
+			else:
+				j21[k, j-1] = -abs(v[i]*v[j]*y[i, j])*np.cos(np.angle(y[i, j]) + d[j] - d[i])
 
 	# J12
 	row, col = np.where(y)
@@ -48,11 +49,12 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(index.shape[0]):
 		i = index[a, 0]
 		j = index[a, 1]
-		l: int = np.where(pq == j)  # map bus index to jacobian index
-		if i == j:
-			j12[i - 1, l] = p[i] + abs(v[i]**2*y[i, j].real)
-		else:
-			j12[i - 1, l] = abs(v[j]*v[i]*y[i, j])*np.cos(np.angle(y[i, j]) + d[j] - d[i])
+		if i != 0 and j != 0:
+			l: int = np.where(pq == j)  # map bus index to jacobian index
+			if i == j:
+				j12[i - 1, l] = p[i] + abs(v[i]**2*y[i, j].real)
+			else:
+				j12[i - 1, l] = abs(v[j]*v[i]*y[i, j])*np.cos(np.angle(y[i, j]) + d[j] - d[i])
 	# J22
 	row, col = np.where(y)
 	index = np.transpose(np.array([row, col]))
@@ -62,12 +64,13 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(index.shape[0]):
 		i = index[a, 0]
 		j = index[a, 1]
-		k: int = np.where(pq == i)  # map bus index to jacobian index
-		l: int = np.where(pq == j)  # map bus index to jacobian index
-		if i == j:
-			j22[k, l] = -j11[i-1, j-1] - 2*abs(v[i])**2*y[i, j].imag
-		else:
-			j22[k, l] = j11[i-1, j-1]
+		if i != 0 and j != 0:
+			k: int = np.where(pq == i)  # map bus index to jacobian index
+			l: int = np.where(pq == j)  # map bus index to jacobian index
+			if i == j:
+				j22[k, l] = -j11[i-1, j-1] - 2*abs(v[i])**2*y[i, j].imag
+			else:
+				j22[k, l] = j11[i-1, j-1]
 	# Assemble jacobian
 	jtop = np.concatenate((j11, j12), axis=1)
 	jbottom = np.concatenate((j21, j22), axis=1)
