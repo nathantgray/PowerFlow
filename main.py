@@ -1,6 +1,6 @@
 import numpy as np
 from mismatch import mismatch
-from read_testcase import readCase
+from read_testcase import read_case
 from makeYbus import makeybus
 from PF_NewtonRaphson import pf_newtonraphson
 
@@ -33,10 +33,10 @@ branchB = 8
 branchTurnsRatio = 14
 branchPhaseShift = 15
 
-filename = 'IEEE14BUS.txt'
+filename = 'IEEE14BUS_handout.txt'
 
 # Load case data
-busData, branchData, p_base = readCase(filename)
+busData, branchData, p_base = read_case(filename)
 
 # Get bus types
 types = busData[:, busType]
@@ -60,9 +60,11 @@ v = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesi
 d = np.zeros_like(v)
 
 # Perform the Newton-Raphson method
-v, d, it = pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=4, maxit=5)
+v, d, it = pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=2, maxit=5)
 
 mis, pcalc, qcalc = mismatch(v, d, y, pq, pvpq, psched, qsched)
+print("Real Y_Bus: \n", y.real)
+print("Imaginary Y_Bus: \n", y.imag)
 print("Bus voltages: \n", v)
 print("Bus angles (deg): \n", d*180/np.pi)
 print("Iterations: ", it)

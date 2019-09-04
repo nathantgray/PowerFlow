@@ -10,6 +10,7 @@ def pf_jacobian(v, d, y, pq):
 	# d: Voltage phase angles
 	# y: Ybus matrix
 	# pq: List of PQ buses
+
 	n = y.shape[0]
 	# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 	s = (v*np.exp(1j*d))*np.conj(y.dot(v*np.exp(1j*d)))
@@ -19,7 +20,6 @@ def pf_jacobian(v, d, y, pq):
 	# Find indices of non-zero ybus entries
 	row, col = np.where(y)
 
-	# J11
 	j11 = np.zeros((n-1, n-1))
 	j12 = np.zeros((n - 1, pq.size))
 	j21 = np.zeros((pq.size, n - 1))
@@ -27,7 +27,6 @@ def pf_jacobian(v, d, y, pq):
 	for a in range(row.shape[0]):
 		i = row[a]
 		j = col[a]
-
 		# J11
 		if i != 0 and j != 0:
 			if i == j:  # Diagonals of J11
@@ -56,7 +55,6 @@ def pf_jacobian(v, d, y, pq):
 					j22[k, l] = -j11[i-1, j-1] - 2*abs(v[i])**2*y[i, j].imag
 				else:  # Off-diagonals of J22
 					j22[k, l] = j11[i-1, j-1]
-
 	# Assemble jacobian
 	jtop = np.concatenate((j11, j12), axis=1)
 	jbottom = np.concatenate((j21, j22), axis=1)
