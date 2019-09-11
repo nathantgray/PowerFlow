@@ -2,6 +2,7 @@ import numpy as np
 from mismatch import mismatch
 from PF_Jacobian import pf_jacobian
 from numpy.linalg import inv
+from crout import mat_solve
 
 
 def pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=2, maxit=4):
@@ -30,7 +31,7 @@ def pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=2, maxit=4):
 		# Calculate Jacobian
 		j = pf_jacobian(v, d, y, pq)
 		# Calculate update values
-		dx = inv(j).dot(mis)
+		dx = mat_solve(j, mis)
 		# Update angles: d_(n+1) = d_n + dd
 		d[pvpq] = d[pvpq] + dx[:n - 1]
 		# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
