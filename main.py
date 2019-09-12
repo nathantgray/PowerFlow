@@ -3,6 +3,7 @@ from mismatch import mismatch
 from read_testcase import read_case
 from makeYbus import makeybus
 from PF_NewtonRaphson import pf_newtonraphson
+from PF_Decoupled import pf_decoupled
 
 np.set_printoptions(linewidth=np.inf, precision=4, suppress=True)
 
@@ -33,7 +34,7 @@ branchB = 8
 branchTurnsRatio = 14
 branchPhaseShift = 15
 
-filename = 'IEEE14BUS_handout.txt'
+filename = 'IEEE14BUS.txt'
 
 # Load case data
 busData, branchData, p_base = read_case(filename)
@@ -51,23 +52,26 @@ mw_load = busData[pvpq, busLoadMW]
 mvar_load = busData[pq, busLoadMVAR]
 psched = np.array([mw_gen - mw_load]).transpose()/p_base
 qsched = np.array([- mvar_load]).transpose()/p_base
+qlim = np.transpose(np.array([busData[:, busMaxMVAR], busData[:, busMinMVAR]]))
 
 # Make the Y-bus matrix
 y = makeybus(busData, branchData)
 
 # Initialize with flat start
-v = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])]).transpose()
-d = np.zeros_like(v)
+v0 = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])]).transpose()
+d0 = np.zeros_like(v0)
 
 # Perform the Newton-Raphson method
-v, d, it = pf_newtonraphson(v, d, y, pq, pvpq, psched, qsched, prec=2, maxit=5)
-
-mis, pcalc, qcalc = mismatch(v, d, y, pq, pvpq, psched, qsched)
-print("Real Y_Bus: \n", y.real)
-print("Imaginary Y_Bus: \n", y.imag)
-print("Bus voltages: \n", v)
-print("Bus angles (deg): \n", d*180/np.pi)
-print("Iterations: ", it)
-print("Mismatch: \n", mis)
-print("Calculated MW: \n", pcalc*p_base)
-print("Calculated MVAR: \n", qcalc*p_base)
+vfd, dfd, itfd = pf_decoupled(v0, d0, y, pq, pvpq, psched, qsched, prec=2, maxit=15)
+vnr, dnr, itnr = pf_newtonraphson(v0, d0, y, pq, pv, psched, qsched, qlim, prec=2, maxit=10)
+print(vfd - vnr)
+print(dfd - dnr)
+# mis, pcalc, qcalc = mismatch(v, d, y, pq, pvpq, psched, qsched)
+# print("Real Y_Bus: \n", y.real)
+# print("Imaginary Y_Bus: \n", y.imag)
+# print("Bus voltages: \n", v)
+# print("Bus angles (deg): \n", d*180/np.pi)
+# print("Iterations: ", it)
+# print("Mismatch: \n", mis)
+# print("Calculated MW: \n", pcalc*p_base)
+# print("Calculated MVAR: \n", qcalc*p_base)
