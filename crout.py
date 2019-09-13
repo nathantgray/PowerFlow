@@ -31,6 +31,7 @@ def mat_solve(mat, b):
 if __name__ == "__main__":
 	a = np.array([[1, 3, 4, 8], [2, 1, 2, 3], [4, 3, 5, 8], [9, 2, 7, 4]])
 	c = np.array([[1], [1], [1], [1]])
+	# c = np.array([1, 1, 1, 1])
 	print(a)
 	print(c)
 	print(crout(a))
