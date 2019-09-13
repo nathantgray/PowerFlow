@@ -52,7 +52,7 @@ mw_load = busData[pvpq, busLoadMW]
 mvar_load = busData[pq, busLoadMVAR]
 psched = np.array([mw_gen - mw_load]).transpose()/p_base
 qsched = np.array([- mvar_load]).transpose()/p_base
-qlim = np.transpose(np.array([busData[:, busMaxMVAR], busData[:, busMinMVAR]]))
+q_lim = np.transpose(np.array([busData[:, busMaxMVAR], busData[:, busMinMVAR]]))
 
 # Make the Y-bus matrix
 y = makeybus(busData, branchData)
@@ -63,7 +63,7 @@ d0 = np.zeros_like(v0)
 
 # Perform the Newton-Raphson method
 vfd, dfd, itfd = pf_decoupled(v0, d0, y, pq, pvpq, psched, qsched, prec=2, maxit=15)
-vnr, dnr, itnr = pf_newtonraphson(v0, d0, y, pq, pv, psched, qsched, qlim, prec=2, maxit=10)
+vnr, dnr, itnr = pf_newtonraphson(v0, d0, y, pq, pv, psched, qsched, q_lim, prec=2, maxit=10)
 print(vfd - vnr)
 print(dfd - dnr)
 # mis, pcalc, qcalc = mismatch(v, d, y, pq, pvpq, psched, qsched)
