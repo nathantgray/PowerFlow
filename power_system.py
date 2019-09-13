@@ -220,11 +220,12 @@ class PowerSystem:
 		# prec: program finishes when all mismatches < 10^-abs(prec)
 		psched = self.psched
 		qsched = self.qsched
+		q_lim = self.q_lim
 		v = deepcopy(v)
 		d = deepcopy(d)
 		y = self.y_bus
 		pq = self.pq
-		# pv = self.pv
+		pv = self.pv
 		pvpq = self.pvpq
 		n = np.shape(y)[0]
 		# Newton Raphson
@@ -232,6 +233,7 @@ class PowerSystem:
 		for it in range(maxit):
 			# Calculate Mismatches
 			mis = self.mismatch(v, d, y, pq, pvpq, psched, qsched)[0]
+			self.check_limits(v, d, y, pq, pv, q_lim)
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec):
 				print("Newton Raphson completed in ", it, " iterations.")
@@ -246,6 +248,23 @@ class PowerSystem:
 			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
 
 		print("Max iterations reached, ", it, ".")
+
+	def check_limits(self, v, d, y, pq, pv, q_lim):
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		q_calc = s.imag
+		gbus = deepcopy(self.pv)
+		q_min = [min(lim) for lim in q_lim]
+		q_max = [max(lim) for lim in q_lim]
+		q_max_bus = gbus[np.where(np.array([max(lim) <= q_calc[i] for i, lim in enumerate(q_lim)])[gbus])[0]]
+		q_min_bus = gbus[np.where(np.array([min(lim) >= q_calc[i] for i, lim in enumerate(q_lim)])[gbus])[0]]
+		if q_min_bus in pv:
+			newpv = np.delete(pv, maxlim_gbus_indexes)
+			newpq = np.sort(np.concatenate(pq, maxlim_gbus_indexes))
+		if q_max_bus in pv:
+			newpv = np.delete(pv, )
+
+		print(newpv)
 
 	def pf_jacobian(self, v, d):
 		# This function was written by Nathan Gray using formulas from chapter 9 of
