@@ -220,20 +220,26 @@ class PowerSystem:
 		# prec: program finishes when all mismatches < 10^-abs(prec)
 
 		psched = self.psched
+		qsched = deepcopy(self.qsched)
 		v = deepcopy(v_start)
 		d = deepcopy(d_start)
 		y = self.y_bus
+		pvpq = self.pvpq
+		pq = deepcopy(self.pq)
+		pq_last = deepcopy(pq)
 		n = np.shape(y)[0]
 		# Newton Raphson
 		it = 0
 		for it in range(maxit+1):
 			# Calculate Mismatches
-			pv, pq, pvpq, qsched = self.check_limits(v, d, y)
+			if it > 0:
+				pq_last = deepcopy(pq)
+				pq, pvpq, qsched = self.check_limits(v, d, y)
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			print(q_calc)
 			# Check error
-			if max(abs(mis)) < 10**-abs(prec):
+			if max(abs(mis)) < 10**-abs(prec) and pq_last.all() == pq.all():
 				print("Newton Raphson completed in ", it, " iterations.")
 				return v, d, it
 			# Calculate Jacobian
@@ -250,25 +256,33 @@ class PowerSystem:
 
 	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=15):
 		psched = self.psched
+		qsched = deepcopy(self.qsched)
 		y = self.y_bus
 		v = deepcopy(v_start)
 		d = deepcopy(d_start)
 		pvpq = self.pvpq
+		pq = self.pq
+		pq_last = deepcopy(pq)
 		# Decoupled Power Flow
 		it = 0
-		# bd = np.zeros(y.shape)
-		# bd[np.where(y)] = 1/(np.imag(1/y[np.where(y)]))
-		# bd = bd[pvpq, :][:, pvpq]
+		bd_ = np.zeros(y.shape)
+		bd_[np.where(y)] = 1/(np.imag(1/y[np.where(y)]))
+		bd_ = bd_[pvpq, :][:, pvpq]
 		bd = -y.imag[pvpq, :][:, pvpq]
+
+		bv = -y.imag[pq, :][:, pq]
 		for it in range(maxit+1):
-			pv, pq, pvpq, qsched = self.check_limits(v, d, y)
-			bv = -y.imag[pq, :][:, pq]
+			if it > 0:
+				pq_last = deepcopy(pq)
+				pq, pvpq, qsched = self.check_limits(v, d, y)
+			if not np.array_equiv(pq_last, pq):
+				bv = -y.imag[pq, :][:, pq]
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			print(q_calc)
 			# Check error
-			if max(abs(mis)) < 10 ** -abs(prec):
+			if max(abs(mis)) < 10 ** -abs(prec) and pq_last.all() == pq.all():
 				print("Decoupled Power Flow completed in ", it, " iterations.")
 				return v, d, it
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
@@ -288,7 +302,7 @@ class PowerSystem:
 		g_bus = deepcopy(self.pv)
 		q_min = np.array([min(lim) for lim in q_lim])
 		q_max = np.array([max(lim) for lim in q_lim])
-		# Get lists of non-slack generator buses that are limited by max and min
+		# Get lists of non-slack generator buses that are limited by max and min limits
 		q_max_bus = np.array(g_bus[np.where(np.array([max(lim) <= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
 		q_min_bus = np.array(g_bus[np.where(np.array([min(lim) >= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
 
@@ -315,7 +329,7 @@ class PowerSystem:
 		# Calculate scheduled Q for each bus
 		v[pv] = np.array(self.bus_data[:, self.busDesiredVolts])[pv]
 
-		return pv, pq, pvpq, qsched
+		return pq, pvpq, qsched
 
 	def pf_jacobian(self, v, d, pq):
 		# This function was written by Nathan Gray using formulas from chapter 9 of
@@ -410,12 +424,13 @@ class PowerSystem:
 
 
 if __name__ == "__main__":
-	case_name = "IEEE14BUS.txt"
+	# case_name = "IEEE14BUS.txt"
+	case_name = "IEEE14BUS_handout.txt"
 	ps = PowerSystem(case_name)
 	v0, d0 = ps.flat_start()
-	# v, d, it = ps.pf_newtonraphson(v0, d0, prec=4, maxit=10)
-	v, d, it = ps.pf_fast_decoupled(v0, d0, prec=4, maxit=40)
+	v, d, it = ps.pf_newtonraphson(v0, d0, prec=3, maxit=10)
+	# v, d, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=40)
 	s = (v * np.exp(1j * d)) * np.conj(ps.y_bus.dot(v * np.exp(1j * d)))
 	print(v)
-	print(s.real)
-	print(s.imag)
+	print(s.real*ps.p_base)
+	print(s.imag*ps.p_base)

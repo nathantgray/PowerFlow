@@ -1,77 +1,33 @@
+import pandas as pd
+from power_system import PowerSystem
 import numpy as np
-from mismatch import mismatch
-from read_testcase import read_case
-from makeYbus import makeybus
-from PF_NewtonRaphson import pf_newtonraphson
-from PF_Decoupled import pf_decoupled
+results_file = "Results.xlsx"
+# case_name = "IEEE14BUS.txt"
+case_name = "IEEE14BUS_handout.txt"
+ps = PowerSystem(case_name)
+v0, d0 = ps.flat_start()
+v_nr, d_nr, it_nr = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
+v_fd, d_fd, it_fd = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=1000)
+s_nr = (v_nr * np.exp(1j * d_nr)) * np.conj(ps.y_bus.dot(v_nr * np.exp(1j * d_nr)))
+s_fd = (v_fd * np.exp(1j * d_fd)) * np.conj(ps.y_bus.dot(v_fd * np.exp(1j * d_fd)))
+nrd = {'Bus': ps.bus_data[:, 0],
+	  "Type": ps.bus_data[:, 4],
+	  "V Result": v_nr,
+	  "Angle Result": d_nr*180/np.pi,
+	  "MW Injected": s_nr.real * ps.p_base,
+	  "MVAR Injected": s_nr.imag * ps.p_base}
+fdd = {'Bus': ps.bus_data[:, 0],
+	  "Type": ps.bus_data[:, 4],
+	  "V Result": v_fd,
+	  "Angle Result": d_fd*180/np.pi,
+	  "MW Injected": s_fd.real * ps.p_base,
+	  "MVAR Injected": s_fd.imag * ps.p_base}
 
-np.set_printoptions(linewidth=np.inf, precision=4, suppress=True)
+df_nr = pd.DataFrame(data=nrd)
+df_fd = pd.DataFrame(data=fdd)
+with pd.ExcelWriter(results_file) as writer:
+	df_nr.to_excel(writer, sheet_name="Newton Raphson")
+	df_fd.to_excel(writer, sheet_name="Fast Decoupled")
+print(df_nr)
+print(df_fd)
 
-
-busNumber = 0
-busArea = 2
-busZone = 3
-busType = 4
-busFinalVoltage = 5
-busFinalAngle = 6
-busLoadMW = 7
-busLoadMVAR = 8
-busGenMW = 9
-busGenMVAR = 10
-busBaseKV = 11
-busDesiredVolts = 12
-busMaxMVAR = 13
-busMinMVAR = 14
-busShuntG = 15
-busShuntB = 16
-busRemoteControlledBusNumber = 17
-
-branchFromBus = 0
-branchToBus = 1
-branchR = 6
-branchX = 7
-branchB = 8
-branchTurnsRatio = 14
-branchPhaseShift = 15
-
-filename = 'IEEE14BUS.txt'
-
-# Load case data
-busData, branchData, p_base = read_case(filename)
-
-# Get bus types
-types = busData[:, busType]
-slack = np.where(types == 3)
-pv = np.where(types == 2)[0]  # list of PV bus indices
-pq = np.where(types < 2)[0]  # list of PQ bus indices
-pvpq = np.sort(np.concatenate((pv, pq)))  # list of indices of non-slack buses
-
-# Calculate scheduled P and Q for each bus
-mw_gen = busData[pvpq, busGenMW]
-mw_load = busData[pvpq, busLoadMW]
-mvar_load = busData[pq, busLoadMVAR]
-psched = np.array([mw_gen - mw_load]).transpose()/p_base
-qsched = np.array([- mvar_load]).transpose()/p_base
-q_lim = np.transpose(np.array([busData[:, busMaxMVAR], busData[:, busMinMVAR]]))
-
-# Make the Y-bus matrix
-y = makeybus(busData, branchData)
-
-# Initialize with flat start
-v0 = np.array([np.where(busData[:, busDesiredVolts] == 0.0, 1, busData[:, busDesiredVolts])]).transpose()
-d0 = np.zeros_like(v0)
-
-# Perform the Newton-Raphson method
-vfd, dfd, itfd = pf_decoupled(v0, d0, y, pq, pvpq, psched, qsched, prec=2, maxit=15)
-vnr, dnr, itnr = pf_newtonraphson(v0, d0, y, pq, pv, psched, qsched, q_lim, prec=2, maxit=10)
-print(vfd - vnr)
-print(dfd - dnr)
-# mis, pcalc, qcalc = mismatch(v, d, y, pq, pvpq, psched, qsched)
-# print("Real Y_Bus: \n", y.real)
-# print("Imaginary Y_Bus: \n", y.imag)
-# print("Bus voltages: \n", v)
-# print("Bus angles (deg): \n", d*180/np.pi)
-# print("Iterations: ", it)
-# print("Mismatch: \n", mis)
-# print("Calculated MW: \n", pcalc*p_base)
-# print("Calculated MVAR: \n", qcalc*p_base)
