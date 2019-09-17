@@ -234,7 +234,7 @@ class PowerSystem:
 			# Calculate Mismatches
 			if it > 0:
 				pq_last = deepcopy(pq)
-				pq, pvpq, qsched = self.check_limits(v, d, y)
+				pq, qsched = self.check_limits(v, d, y)
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			print(q_calc)
@@ -254,7 +254,8 @@ class PowerSystem:
 		print("Max iterations reached, ", it, ".")
 		return v, d, it
 
-	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=15):
+	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100):
+		print("\n~~~~~~~~~~ Start Fast Decoupled Method ~~~~~~~~~~\n")
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
 		y = self.y_bus
@@ -265,16 +266,17 @@ class PowerSystem:
 		pq_last = deepcopy(pq)
 		# Decoupled Power Flow
 		it = 0
-		bd_ = np.zeros(y.shape)
-		bd_[np.where(y)] = 1/(np.imag(1/y[np.where(y)]))
-		bd_ = bd_[pvpq, :][:, pvpq]
+		# bd_ = np.zeros(y.shape)
+		# bd_[np.where(y)] = 1/(np.imag(1/y[np.where(y)]))
+		# bd_ = bd_[pvpq, :][:, pvpq]
 		bd = -y.imag[pvpq, :][:, pvpq]
-
 		bv = -y.imag[pq, :][:, pq]
 		for it in range(maxit+1):
+			# Do q-limit check after first iteration
 			if it > 0:
 				pq_last = deepcopy(pq)
-				pq, pvpq, qsched = self.check_limits(v, d, y)
+				pq, qsched = self.check_limits(v, d, y)
+			# Only update bv matrix size if pq changes
 			if not np.array_equiv(pq_last, pq):
 				bv = -y.imag[pq, :][:, pq]
 			# Calculate Mismatches
@@ -307,29 +309,27 @@ class PowerSystem:
 		q_min_bus = np.array(g_bus[np.where(np.array([min(lim) >= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
 
 		if q_min_bus.any() in pv or q_max_bus.any() in pv:
-			q_gen_pu = np.zeros(q_calc.shape)
+			q_gen_set = np.zeros(q_calc.shape)
 			if q_min_bus.any() in pv:  # Remove from pv list, add to pq list.
 				pv = np.setdiff1d(pv, q_min_bus)
 				pq = np.sort(np.concatenate((pq, q_min_bus)))
-				q_gen_pu[q_min_bus] = q_min[q_min_bus]
+				q_gen_set[q_min_bus] = q_min[q_min_bus]
 			if q_max_bus.any() in pv:  # Remove from pv list, add to pq list.
 				pv = np.setdiff1d(pv, q_max_bus)
 				pq = np.sort(np.concatenate((pq, q_max_bus)))
-				q_gen_pu[q_max_bus] = q_max[q_max_bus]
-			pvpq = np.sort(np.concatenate((pv, pq)))
+				q_gen_set[q_max_bus] = q_max[q_max_bus]
 			q_limited = np.sort(np.concatenate((q_max_bus, q_min_bus)))
 			q_load_pu = np.array(self.bus_data[pq, self.busLoadMVAR] / self.p_base)
-			qsched = np.array(q_gen_pu[pq] - q_load_pu)
+			qsched = np.array(q_gen_set[pq] - q_load_pu)
 			print("Q Limited: ", q_limited)
 		else:
 			qsched = self.qsched
-			pvpq = self.pvpq
 			pv = self.pv
 			pq = self.pq
 		# Calculate scheduled Q for each bus
 		v[pv] = np.array(self.bus_data[:, self.busDesiredVolts])[pv]
 
-		return pq, pvpq, qsched
+		return pq, qsched
 
 	def pf_jacobian(self, v, d, pq):
 		# This function was written by Nathan Gray using formulas from chapter 9 of
