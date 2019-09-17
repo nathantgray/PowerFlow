@@ -226,6 +226,7 @@ class PowerSystem:
 		y = self.y_bus
 		pvpq = self.pvpq
 		pq = deepcopy(self.pq)
+		pv = deepcopy(self.pv)
 		pq_last = deepcopy(pq)
 		n = np.shape(y)[0]
 		# Newton Raphson
@@ -234,7 +235,7 @@ class PowerSystem:
 			# Calculate Mismatches
 			if it > 0:
 				pq_last = deepcopy(pq)
-				pq, qsched = self.check_limits(v, d, y)
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq, qsched)
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			print(q_calc)
@@ -263,6 +264,7 @@ class PowerSystem:
 		d = deepcopy(d_start)
 		pvpq = self.pvpq
 		pq = self.pq
+		pv = self.pv
 		pq_last = deepcopy(pq)
 		# Decoupled Power Flow
 		it = 0
@@ -275,7 +277,7 @@ class PowerSystem:
 			# Do q-limit check after first iteration
 			if it > 0:
 				pq_last = deepcopy(pq)
-				pq, qsched = self.check_limits(v, d, y)
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq, qsched)
 			# Only update bv matrix size if pq changes
 			if not np.array_equiv(pq_last, pq):
 				bv = -y.imag[pq, :][:, pq]
@@ -293,20 +295,20 @@ class PowerSystem:
 		print("Max iterations reached, ", it, ".")
 		return v, d, it
 
-	def check_limits(self, v, d, y):
+	def check_limits(self, v, d, y, pv, pq, qsched):
 		q_lim = self.q_lim
-		pq = deepcopy(self.pq)
-		pv = deepcopy(self.pv)
+		# pq = deepcopy(self.pq)
+		# pv = deepcopy(self.pv)
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
 		q_calc = s.imag
 		q_gen = q_calc + np.array(self.bus_data[:, self.busLoadMVAR])/self.p_base
-		g_bus = deepcopy(self.pv)
+		g_bus = deepcopy(pv)
 		q_min = np.array([min(lim) for lim in q_lim])
 		q_max = np.array([max(lim) for lim in q_lim])
 		# Get lists of non-slack generator buses that are limited by max and min limits
-		q_max_bus = np.array(g_bus[np.where(np.array([max(lim) <= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
-		q_min_bus = np.array(g_bus[np.where(np.array([min(lim) >= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
+		# q_max_bus = np.array(g_bus[np.where(np.array([max(lim) <= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
+		# q_min_bus = np.array(g_bus[np.where(np.array([min(lim) >= q_gen[i] for i, lim in enumerate(q_lim)])[g_bus])[0]])
 
 		if q_min_bus.any() in pv or q_max_bus.any() in pv:
 			q_gen_set = np.zeros(q_calc.shape)
@@ -322,14 +324,10 @@ class PowerSystem:
 			q_load_pu = np.array(self.bus_data[pq, self.busLoadMVAR] / self.p_base)
 			qsched = np.array(q_gen_set[pq] - q_load_pu)
 			print("Q Limited: ", q_limited)
-		else:
-			qsched = self.qsched
-			pv = self.pv
-			pq = self.pq
 		# Calculate scheduled Q for each bus
 		v[pv] = np.array(self.bus_data[:, self.busDesiredVolts])[pv]
 
-		return pq, qsched
+		return pv, pq, qsched
 
 	def pf_jacobian(self, v, d, pq):
 		# This function was written by Nathan Gray using formulas from chapter 9 of
