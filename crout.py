@@ -2,6 +2,7 @@ import numpy as np
 
 
 def crout(mat):
+	# Performs Crout's LU decomposition and stores it in q = L + U - I
 	n = mat.shape[0]
 	q = np.zeros(mat.shape)
 	for j in range(n):
@@ -13,6 +14,8 @@ def crout(mat):
 
 
 def lu_solve(q, b):
+	# Solves the matrix equation, L*U*x = b for x.
+	# L and U are stored in the matrix q = L + U - I
 	n = b.shape[0]
 	y = np.zeros(b.shape)
 	x = np.zeros(b.shape)
@@ -25,6 +28,8 @@ def lu_solve(q, b):
 
 
 def mat_solve(mat, b):
+	# Solve the matrix equation Ax=b for x, where A is input argument, mat.
+	# returns the vector x
 	return lu_solve(crout(mat), b)
 
 

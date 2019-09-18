@@ -233,15 +233,16 @@ class PowerSystem:
 		pv = deepcopy(self.pv)
 		pq_last = deepcopy(pq)
 		n = np.shape(y)[0]
+		i = 0
 		# Newton Raphson
-		for it in range(maxit+1):
+		for i in range(maxit+1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
-				print("Newton Raphson completed in ", it, " iterations.")
-				return v, d, it
+				print("Newton Raphson completed in ", i, " iterations.")
+				return v, d, i
 			# Calculate Jacobian
 			j = self.pf_jacobian(v, d, pq)
 			# Calculate update values
@@ -253,8 +254,8 @@ class PowerSystem:
 			# Check Limits
 			pq_last = deepcopy(pq)
 			pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
-		print("Max iterations reached, ", it, ".")
-		return v, d, it
+		print("Max iterations reached, ", i, ".")
+		return v, d, i
 
 	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100):
 		# Uses Fast Decoupled method to solve the power-flow of a power system.
@@ -277,14 +278,15 @@ class PowerSystem:
 		# Decoupled Power Flow
 		bd = -y.imag[pvpq, :][:, pvpq]
 		bv = -y.imag[pq, :][:, pq]
-		for it in range(maxit+1):
+		i = 0
+		for i in range(maxit+1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			# Check error
 			if max(abs(mis)) < 10 ** -abs(prec) and np.array_equiv(pq_last, pq):
-				print("Decoupled Power Flow completed in ", it, " iterations.")
-				return v, d, it
+				print("Decoupled Power Flow completed in ", i, " iterations.")
+				return v, d, i
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
 			v[pq] = v[pq] + mat_solve(bv, mis[len(pvpq):] / v[pq])
 			# Do q-limit check
@@ -294,8 +296,8 @@ class PowerSystem:
 			if not np.array_equiv(pq_last, pq):
 				bv = -y.imag[pq, :][:, pq]
 
-		print("Max iterations reached, ", it, ".")
-		return v, d, it
+		print("Max iterations reached, ", i, ".")
+		return v, d, i
 
 	def check_limits(self, v, d, y, pv, pq):
 		q_lim = self.q_lim
@@ -452,7 +454,7 @@ if __name__ == "__main__":
 	ps = PowerSystem(case_name)
 	v0, d0 = ps.flat_start()
 	v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
-	# v, d, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=40)
+	v_fd, d_fd, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=40)
 	s_nr = (v_nr * np.exp(1j * d_nr)) * np.conj(ps.y_bus.dot(v_nr * np.exp(1j * d_nr)))
 	print(v_nr)
 	print(s_nr.real * ps.p_base)
