@@ -310,27 +310,30 @@ class PowerSystem:
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 
 		# Un-limit buses
-		if len(self.q_max_bus) > 0:
-			for bus in self.q_max_bus:
-				if v[bus] > self.bus_data[bus, self.busDesiredVolts]:
-					# Bus is no longer limited, make PV bus again.
-					pq = np.setdiff1d(pq, bus)
-					pv = np.unique(np.concatenate((pv, bus)))
-					self.q_max_bus = np.delete(np.where(self.q_max_bus == bus))
-		if len(self.q_min_bus) > 0:
-			for bus in self.q_min_bus:
-				if v[bus] < self.bus_data[bus, self.busDesiredVolts]:
-					# Bus is no longer limited, make PV bus again.
-					pq = np.setdiff1d(pq, bus)
-					pv = np.sort(np.concatenate((pv, bus)))
-					self.q_min_bus = np.delete(np.where(self.q_min_bus == bus))
+		if len(self.q_max_bus) > 0 or len(self.q_min_bus) > 0:
+			if len(self.q_max_bus) > 0:
+				for bus in self.q_max_bus:
+					if v[bus] > self.bus_data[bus, self.busDesiredVolts]:
+						# Bus is no longer limited, make PV bus again.
+						pq = np.setdiff1d(pq, [bus])
+						pv = np.unique(np.concatenate((pv, [bus])))
+						self.q_max_bus = np.delete(self.q_max_bus, np.where(self.q_max_bus == bus))
+			if len(self.q_min_bus) > 0:
+				for bus in self.q_min_bus:
+					if v[bus] < self.bus_data[bus, self.busDesiredVolts]:
+						# Bus is no longer limited, make PV bus again.
+						pq = np.setdiff1d(pq, [bus])
+						pv = np.sort(np.concatenate((pv, [bus])))
+						self.q_min_bus = np.delete(self.q_min_bus, np.where(self.q_min_bus == bus))
+			# q_load = np.array(self.bus_data[pq, self.busLoadMVAR]/self.p_base)
+			# qsched = np.array(q_gen_set[pq] - q_load)
+
 		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
 		q_calc = s.imag
 		q_generated = q_calc + np.array(self.bus_data[:, self.busLoadMVAR])/self.p_base
 		q_min_limits = np.array([min(lim) for lim in q_lim])[self.gen_buses]
 		q_max_limits = np.array([max(lim) for lim in q_lim])[self.gen_buses]
 		# Get lists of non-slack generator buses that are limited by max and min limits
-		# TODO: change to give only new indexes
 		max_index_for_gen_buses = np.where(np.array([max(lim) <= q_generated[i] for i, lim in enumerate(q_lim)])[pv])[0]
 		min_index_for_gen_buses = np.where(np.array([min(lim) >= q_generated[i] for i, lim in enumerate(q_lim)])[pv])[0]
 		# Keep record of all buses that are limited or have been limited.
@@ -349,9 +352,10 @@ class PowerSystem:
 				pv = np.setdiff1d(pv, self.q_max_bus)
 				pq = np.unique(np.concatenate((pq, self.q_max_bus)))
 				q_gen_set[self.q_max_bus] = q_max_limits[max_index_for_gen_buses]
+			q_load = np.array(self.bus_data[pq, self.busLoadMVAR]/self.p_base)
+			# TODO: update qsched
+			qsched = np.array(q_gen_set[pq] - q_load)
 			q_limited = np.sort(np.concatenate((self.q_max_bus, self.q_min_bus)))
-			q_load_pu = np.array(self.bus_data[pq, self.busLoadMVAR] / self.p_base)
-			qsched = np.array(q_gen_set[pq] - q_load_pu)
 			print("Q Limited: ", q_limited)
 		# Calculate scheduled Q for each bus
 		v[pv] = np.array(self.bus_data[:, self.busDesiredVolts])[pv]

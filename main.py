@@ -6,8 +6,8 @@ results_file = "Results.xlsx"
 case_name = "IEEE14BUS_handout.txt"
 ps = PowerSystem(case_name)
 v0, d0 = ps.flat_start()
-v_nr, d_nr, it_nr = ps.pf_newtonraphson(v0, d0, prec=5, maxit=10)
-v_fd, d_fd, it_fd = ps.pf_fast_decoupled(v0, d0, prec=5, maxit=100)
+v_nr, d_nr, it_nr = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
+v_fd, d_fd, it_fd = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=100)
 s_nr = (v_nr * np.exp(1j * d_nr)) * np.conj(ps.y_bus.dot(v_nr * np.exp(1j * d_nr)))
 s_fd = (v_fd * np.exp(1j * d_fd)) * np.conj(ps.y_bus.dot(v_fd * np.exp(1j * d_fd)))
 nrd = {'Bus': ps.bus_data[:, 0],
