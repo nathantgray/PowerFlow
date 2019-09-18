@@ -48,8 +48,11 @@ class PowerSystem:
 		self.mw_gen = self.bus_data[self.pvpq, self.busGenMW]
 		self.mw_load = self.bus_data[self.pvpq, self.busLoadMW]
 		self.mvar_load = self.bus_data[self.pq, self.busLoadMVAR]
+		self.mvar_load_full = self.bus_data[:, self.busLoadMVAR]
+		self.q_load_full = self.mvar_load_full/self.p_base
 		self.psched = np.array(self.mw_gen - self.mw_load)/self.p_base
 		self.qsched = np.array(- self.mvar_load)/self.p_base
+		self.qsched_full = np.array(- self.mvar_load_full)/self.p_base
 		self.q_lim = np.c_[
 			self.bus_data[:, self.busMaxMVAR]/self.p_base,
 			self.bus_data[:, self.busMinMVAR]/self.p_base]
@@ -215,15 +218,11 @@ class PowerSystem:
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
-		# v: list of voltage magnitudes in system
-		# d: list of voltage phase angles in system
-		# y: Ybus matrix for system
-		# pq: list of PQ buses
-		# pv: list of PV buses
-		# psched, qsched: list of real, reactive power injections
-		# qlim: [qmax, qmin]
+		# v_start: list of voltage magnitudes in system
+		# d_start: list of voltage phase angles in system
 		# prec: program finishes when all mismatches < 10^-abs(prec)
-
+		# maxit: maximum number of iterations
+		print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
 		v = deepcopy(v_start)
@@ -235,17 +234,12 @@ class PowerSystem:
 		pq_last = deepcopy(pq)
 		n = np.shape(y)[0]
 		# Newton Raphson
-		it = 0
 		for it in range(maxit+1):
 			# Calculate Mismatches
-			if it > 0:
-				pq_last = deepcopy(pq)
-				pv, pq, qsched = self.check_limits(v, d, y, pv, pq, qsched)
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
-			print(q_calc)
 			# Check error
-			if max(abs(mis)) < 10**-abs(prec) and pq_last.all() == pq.all():
+			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
 				print("Newton Raphson completed in ", it, " iterations.")
 				return v, d, it
 			# Calculate Jacobian
@@ -256,11 +250,20 @@ class PowerSystem:
 			d[pvpq] = d[pvpq] + dx[:n - 1]
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
 			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
-
+			# Check Limits
+			pq_last = deepcopy(pq)
+			pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 		print("Max iterations reached, ", it, ".")
 		return v, d, it
 
 	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100):
+		# Uses Fast Decoupled method to solve the power-flow of a power system.
+		# Written by Nathan Gray
+		# Arguments:
+		# v_start: list of voltage magnitudes in system
+		# d_start: list of voltage phase angles in system
+		# prec: program finishes when all mismatches < 10^-abs(prec)
+		# maxit: maximum number of iterations
 		print("\n~~~~~~~~~~ Start Fast Decoupled Method ~~~~~~~~~~\n")
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
@@ -272,44 +275,33 @@ class PowerSystem:
 		pv = self.pv
 		pq_last = deepcopy(pq)
 		# Decoupled Power Flow
-		it = 0
-		# bd_ = np.zeros(y.shape)
-		# bd_[np.where(y)] = 1/(np.imag(1/y[np.where(y)]))
-		# bd_ = bd_[pvpq, :][:, pvpq]
 		bd = -y.imag[pvpq, :][:, pvpq]
 		bv = -y.imag[pq, :][:, pq]
 		for it in range(maxit+1):
-			# Do q-limit check after first iteration
-			if it > 0:
-				pq_last = deepcopy(pq)
-				pv, pq, qsched = self.check_limits(v, d, y, pv, pq, qsched)
-			# Only update bv matrix size if pq changes
-			if not np.array_equiv(pq_last, pq):
-				bv = -y.imag[pq, :][:, pq]
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
-			print(q_calc)
 			# Check error
-			if max(abs(mis)) < 10 ** -abs(prec) and pq_last.all() == pq.all():
+			if max(abs(mis)) < 10 ** -abs(prec) and np.array_equiv(pq_last, pq):
 				print("Decoupled Power Flow completed in ", it, " iterations.")
 				return v, d, it
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
 			v[pq] = v[pq] + mat_solve(bv, mis[len(pvpq):] / v[pq])
+			# Do q-limit check
+			pq_last = deepcopy(pq)
+			pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+			# Only update bv matrix size if pq changes
+			if not np.array_equiv(pq_last, pq):
+				bv = -y.imag[pq, :][:, pq]
 
 		print("Max iterations reached, ", it, ".")
 		return v, d, it
 
-	def check_limits(self, v, d, y, pv, pq, qsched):
-		# need track: v of limited buses vs v when not limited, what buses are max limited and which are min limited
+	def check_limits(self, v, d, y, pv, pq):
 		q_lim = self.q_lim
-		# self.q_min_bus = np.array([])
-		# self.q_max_bus = np.array([])
-		# pq = deepcopy(self.pq)
-		# pv = deepcopy(self.pv)
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 
-		# Un-limit buses
+		# Find buses that are no longer limited and convert them back to PV buses
 		if len(self.q_max_bus) > 0 or len(self.q_min_bus) > 0:
 			if len(self.q_max_bus) > 0:
 				for bus in self.q_max_bus:
@@ -318,6 +310,7 @@ class PowerSystem:
 						pq = np.setdiff1d(pq, [bus])
 						pv = np.unique(np.concatenate((pv, [bus])))
 						self.q_max_bus = np.delete(self.q_max_bus, np.where(self.q_max_bus == bus))
+						print("Not Q Limited: ", bus, " because ", v[bus], " > ", self.bus_data[bus, self.busDesiredVolts])
 			if len(self.q_min_bus) > 0:
 				for bus in self.q_min_bus:
 					if v[bus] < self.bus_data[bus, self.busDesiredVolts]:
@@ -325,40 +318,39 @@ class PowerSystem:
 						pq = np.setdiff1d(pq, [bus])
 						pv = np.sort(np.concatenate((pv, [bus])))
 						self.q_min_bus = np.delete(self.q_min_bus, np.where(self.q_min_bus == bus))
-			# q_load = np.array(self.bus_data[pq, self.busLoadMVAR]/self.p_base)
-			# qsched = np.array(q_gen_set[pq] - q_load)
+						print("Not Q Limited: ", bus, " because ", v[bus], " < ", self.bus_data[bus, self.busDesiredVolts])
 
-		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
-		q_calc = s.imag
-		q_generated = q_calc + np.array(self.bus_data[:, self.busLoadMVAR])/self.p_base
-		q_min_limits = np.array([min(lim) for lim in q_lim])[self.gen_buses]
-		q_max_limits = np.array([max(lim) for lim in q_lim])[self.gen_buses]
-		# Get lists of non-slack generator buses that are limited by max and min limits
-		max_index_for_gen_buses = np.where(np.array([max(lim) <= q_generated[i] for i, lim in enumerate(q_lim)])[pv])[0]
-		min_index_for_gen_buses = np.where(np.array([min(lim) >= q_generated[i] for i, lim in enumerate(q_lim)])[pv])[0]
+		# Find buses that need to be limited.
+		s_full = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		q_calc_full = s_full.imag
+		q_generated_full = q_calc_full + self.q_load_full
+		q_min_limits = np.array([min(lim) for lim in q_lim])
+		q_max_limits = np.array([max(lim) for lim in q_lim])
 		# Keep record of all buses that are limited or have been limited.
-		self.q_max_bus = \
-			np.unique(np.r_[self.q_max_bus, np.array(self.gen_buses[max_index_for_gen_buses])])
-		self.q_min_bus = \
-			np.unique(np.r_[self.q_min_bus, np.array(self.gen_buses[min_index_for_gen_buses])])
+		max_index_for_pv_buses = np.where(np.array([max(lim) <= q_generated_full[i] for i, lim in enumerate(q_lim)])[pv])[0]
+		min_index_for_pv_buses = np.where(np.array([min(lim) >= q_generated_full[i] for i, lim in enumerate(q_lim)])[pv])[0]
+		new_q_max_buses = np.array(pv[max_index_for_pv_buses])
+		new_q_min_buses = np.array(pv[min_index_for_pv_buses])
+		self.q_max_bus = np.unique(np.r_[self.q_max_bus, new_q_max_buses])
+		self.q_min_bus = np.unique(np.r_[self.q_min_bus, new_q_min_buses])
 
 		if self.q_min_bus.any() in pv or self.q_max_bus.any() in pv:
-			q_gen_set = np.zeros(q_calc.shape)
 			if self.q_min_bus.any() in pv:  # Remove from pv list, add to pq list.
 				pv = np.setdiff1d(pv, self.q_min_bus)
 				pq = np.unique(np.concatenate((pq, self.q_min_bus)))
-				q_gen_set[self.q_min_bus] = q_min_limits[min_index_for_gen_buses]
+				self.qsched_full[self.q_min_bus] = \
+					np.array(q_min_limits[self.q_min_bus] - self.q_load_full[self.q_min_bus])
 			if self.q_max_bus.any() in pv:  # Remove from pv list, add to pq list.
 				pv = np.setdiff1d(pv, self.q_max_bus)
 				pq = np.unique(np.concatenate((pq, self.q_max_bus)))
-				q_gen_set[self.q_max_bus] = q_max_limits[max_index_for_gen_buses]
-			q_load = np.array(self.bus_data[pq, self.busLoadMVAR]/self.p_base)
-			# TODO: update qsched
-			qsched = np.array(q_gen_set[pq] - q_load)
+				self.qsched_full[self.q_max_bus] = \
+					np.array(q_max_limits[self.q_max_bus] - self.q_load_full[self.q_max_bus])
 			q_limited = np.sort(np.concatenate((self.q_max_bus, self.q_min_bus)))
 			print("Q Limited: ", q_limited)
+
 		# Calculate scheduled Q for each bus
-		v[pv] = np.array(self.bus_data[:, self.busDesiredVolts])[pv]
+		qsched = self.qsched_full[pq]
+		v[pv] = np.array(self.bus_data[pv, self.busDesiredVolts])
 
 		return pv, pq, qsched
 
@@ -459,9 +451,9 @@ if __name__ == "__main__":
 	case_name = "IEEE14BUS_handout.txt"
 	ps = PowerSystem(case_name)
 	v0, d0 = ps.flat_start()
-	v, d, it = ps.pf_newtonraphson(v0, d0, prec=3, maxit=10)
+	v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
 	# v, d, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=40)
-	s = (v * np.exp(1j * d)) * np.conj(ps.y_bus.dot(v * np.exp(1j * d)))
-	print(v)
-	print(s.real*ps.p_base)
-	print(s.imag*ps.p_base)
+	s_nr = (v_nr * np.exp(1j * d_nr)) * np.conj(ps.y_bus.dot(v_nr * np.exp(1j * d_nr)))
+	print(v_nr)
+	print(s_nr.real * ps.p_base)
+	print(s_nr.imag * ps.p_base)
