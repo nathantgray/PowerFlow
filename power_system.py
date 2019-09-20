@@ -190,7 +190,7 @@ class PowerSystem:
 		nl = self.branch_data.shape[0]  # number of lines
 		n = self.bus_data.shape[0]  # number of buses
 		if self.sparse:
-			y_bus = Sparse(np.array(range(n)), np.array(range(n)), np.array(np.zeros(n)))
+			y_bus = Sparse(np.array([]), np.array([]), np.array([]))
 		else:
 			y_bus = np.zeros((n, n)) + np.zeros((n, n)) * 1j  # initialize Y Bus Matrix
 		# The following algorithm takes the arguments: y, b_line, t, y_shunt
