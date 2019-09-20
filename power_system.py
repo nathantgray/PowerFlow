@@ -1,10 +1,12 @@
 import numpy as np
 from copy import deepcopy
 from crout import mat_solve
+from sparse import Sparse
 
 
 class PowerSystem:
-	def __init__(self, filename):
+	def __init__(self, filename, sparse = False):
+		self.sparse = sparse
 		self.busNumber = 0
 		self.busArea = 2
 		self.busZone = 3
@@ -187,8 +189,10 @@ class PowerSystem:
 
 		nl = self.branch_data.shape[0]  # number of lines
 		n = self.bus_data.shape[0]  # number of buses
-		y_bus = np.zeros((n, n)) + np.zeros((n, n)) * 1j  # initialize Y Bus Matrix
-
+		if self.sparse:
+			y_bus = Sparse(np.array(range(n)), np.array(range(n)), np.array(np.zeros(n)))
+		else:
+			y_bus = np.zeros((n, n)) + np.zeros((n, n)) * 1j  # initialize Y Bus Matrix
 		# The following algorithm takes the arguments: y, b_line, t, y_shunt
 		# Create the four entries of a Y-Bus matrix for each line.
 		#
@@ -284,7 +288,7 @@ class PowerSystem:
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(mis))
 			# Check error
-			if max(abs(mis)) < 10 ** -abs(prec) and np.array_equiv(pq_last, pq):
+			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
 				print("Decoupled Power Flow completed in ", i, " iterations.")
 				return v, d, i
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
@@ -373,7 +377,11 @@ class PowerSystem:
 		q = s.imag
 
 		# Find indices of non-zero ybus entries
-		row, col = np.where(y)
+		try:
+			row, col = np.where(y)
+		except:
+			row = y.rows
+			col = y.cols
 
 		j11 = np.zeros((n - 1, n - 1))
 		j12 = np.zeros((n - 1, pq.size))
@@ -454,7 +462,7 @@ if __name__ == "__main__":
 	ps = PowerSystem(case_name)
 	v0, d0 = ps.flat_start()
 	v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
-	v_fd, d_fd, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=40)
+	v_fd, d_fd, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=100)
 	s_nr = (v_nr * np.exp(1j * d_nr)) * np.conj(ps.y_bus.dot(v_nr * np.exp(1j * d_nr)))
 	print(v_nr)
 	print(s_nr.real * ps.p_base)

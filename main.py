@@ -2,9 +2,9 @@ import pandas as pd
 from power_system import PowerSystem
 import numpy as np
 results_file = "Results.xlsx"
-# case_name = "IEEE14BUS.txt"
-case_name = "IEEE14BUS_handout.txt"
-ps = PowerSystem(case_name)
+case_name = "IEEE14BUS.txt"
+# case_name = "IEEE14BUS_handout.txt"
+ps = PowerSystem(case_name, sparse = True)
 v0, d0 = ps.flat_start()
 v_nr, d_nr, it_nr = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
 v_fd, d_fd, it_fd = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=1000)
