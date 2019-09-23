@@ -3,6 +3,7 @@ import numpy as np
 
 class Sparse:
 	def __init__(self, i, j, v):
+		# TODO add optional arguments for setting fir, fic, nir, and nic to make calls faster
 		self.rows = i
 		self.cols = j
 		self.values = v
@@ -97,37 +98,88 @@ class Sparse:
 		i = ij[0]
 		j = ij[1]
 
-		if isinstance(i, slice):
-			i = [index for index in range(i.start, i.stop, i.step)]
-		if isinstance(j, slice):
-			j = [index for index in range(j.start, j.stop, j.step)]
 		if isinstance(i, (int, np.int32)) and isinstance(j, (int, np.int32)):
-			if len(self.fic) - 1 < j:
+			if len(self.fic) - 1 < j:  # Is the index in bounds?
 				print("column index, ", j, " out of bounds.")
 				if return_k:
 					return 0, -1
 				else:
 					return 0
-			elif len(self.fir) - 1 < i:
+			elif len(self.fir) - 1 < i:  # Is the index in bounds?
 				print("Row index, ", i, " out of bounds.")
 				if return_k:
 					return 0, -1
 				else:
 					return 0
-			else:
-				k = self.fir[i]
-				while self.cols[k] != j:
+			else:  # The index is within bounds.
+				k = self.fir[i]  # Start with first value in row.
+				while self.cols[k] != j:  # Loops until column matches j index.
 					k = self.nir[k]
 					if k < 0: # end of row and value not found, return 0
 						if return_k:
-							return (0, -1)
+							return 0, -1
 						else:
 							return 0
 				if self.rows[k] == i and self.cols[k] == j:
 					if return_k:
-						return (self.values[k], k)
+						return self.values[k], k
 					else:
 						return self.values[k]
+		# The remaining code runs if multiple indexes or slices are given. Returns a new sparse array.
+		if isinstance(i, slice):
+			i_start = i.start
+			i_stop = i.stop
+			i_step = i.step
+			if i_start == None:
+				i_start = 0
+			if i_stop == None:
+				i_stop = self.shape[0]
+			if i_step == None:
+				i_step = 1
+			i = [index for index in range(i_start, i_stop, i_step)]
+		if isinstance(j, slice):
+			j_start = j.start
+			j_stop = j.stop
+			j_step = j.step
+			if j_start is None:
+				j_start = 0
+			if j_stop is None:
+				j_stop = self.shape[0]
+			if j_step is None:
+				j_step = 1
+			j = [index for index in range(j_start, j_stop, j_step)]
+		if not hasattr(i, '__iter__'):
+			i_start = i
+			i = [int(i)]
+		if not hasattr(j, '__iter__'):
+			j_stop = j
+			j = [int(j)]
+		_v = np.array([], dtype=int)
+		_r = np.array([], dtype=int)
+		_c = np.array([], dtype=int)
+		for n_row, row in enumerate(i):
+			n_col = 0
+			k = self.fir[row]  # Start with first value in row.
+			#while n_col < len(j):
+			while k > -1 and n_col < len(j):
+				while self.cols[k] != j[n_col] and k > -1:  # Loops until column matches j index or till end of row.
+					if self.cols[k] > j[n_col]:
+						# If next in row is farther right than next column asked for, a zero must exist in that column
+						n_col = n_col + 1
+					else:  # otherwise go to next in row
+						k = self.nir[k]
+				if self.rows[k] == row and self.cols[k] in j:  # If value found, add to new list
+					_v = np.r_[_v, self.values[k]]
+					_r = np.r_[_r, n_row]
+					_c = np.r_[_c, n_col]
+					k = self.nir[k]  # Go to next value in row.
+					n_col = n_col + 1
+				if k > -1 and n_col < len(j): # If not end of row and not end of j list
+					if self.cols[k] > j[n_col]:
+						# If next in row is farther right than next column asked for, a zero must exist in that column
+						n_col = n_col + 1
+		return self.return_new_object(_r, _c, _v)
+
 
 	def __add__(self, other):
 		try:
@@ -138,6 +190,9 @@ class Sparse:
 			except:
 				print("NotImplemented")
 
+	@classmethod
+	def return_new_object(cls, i, j, v):
+		return cls(i, j, v)
 
 	def make_fic(self):
 		for j in range(self.shape[1]):
@@ -207,6 +262,16 @@ class Sparse:
 					k = self.nir[k]
 			return result
 
+	def __neg__(self):
+		return self.return_new_object(self.rows, self.cols, -self.values)
+
+	def imag(self):
+		return self.return_new_object(self.rows, self.cols, np.imag(self.values))
+	imag = property(imag)
+
+	def real(self):
+		return self.return_new_object(self.rows, self.cols, np.real(self.values))
+	real = property(real)
 
 if __name__ == "__main__":
 	# TEST CODE
@@ -234,5 +299,8 @@ if __name__ == "__main__":
 	b[0, 1] = 1
 	b[1, 0] = 2
 	print(b.full())
+	new_a = a[[0, 1, 3, 4], 2]
+	print(a.full())
+	print(new_a.full())
 	print('end')
 
