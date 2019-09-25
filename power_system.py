@@ -218,7 +218,7 @@ class PowerSystem:
 
 		return y_bus
 
-	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4):
+	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True):
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -242,10 +242,11 @@ class PowerSystem:
 		for i in range(maxit+1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
-			print("error: ", max(mis))
+			print("error: ", max(abs(mis)))
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
 				print("Newton Raphson completed in ", i, " iterations.")
+				# pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 				return v, d, i
 			# Calculate Jacobian
 			j = self.pf_jacobian(v, d, pq)
@@ -255,13 +256,15 @@ class PowerSystem:
 			d[pvpq] = d[pvpq] + dx[:n - 1]
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
 			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
+			# print(v, d)
+			pq_last	= deepcopy(pq)
+			if qlim:
 			# Check Limits
-			pq_last = deepcopy(pq)
-			pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 		print("Max iterations reached, ", i, ".")
 		return v, d, i
 
-	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100):
+	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100, qlim=True):
 		# Uses Fast Decoupled method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -282,20 +285,22 @@ class PowerSystem:
 		# Decoupled Power Flow
 		bd = -y.imag[pvpq, :][:, pvpq]
 		bv = -y.imag[pq, :][:, pq]
+		# bd = self.pf_jacobian(v, d, pq, decoupled=True)[0]
+		# bv = self.pf_jacobian(v, d, pq, decoupled=True)[1]
 		i = 0
 		for i in range(maxit+1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
-			print("error: ", max(mis))
+			print("error: ", max(abs(mis)))
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
 				print("Decoupled Power Flow completed in ", i, " iterations.")
 				return v, d, i
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
 			v[pq] = v[pq] + mat_solve(bv, mis[len(pvpq):] / v[pq])
-			# Do q-limit check
 			pq_last = deepcopy(pq)
-			pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+			if qlim:  # Do q-limit check
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 			# Only update bv matrix size if pq changes
 			if not np.array_equiv(pq_last, pq):
 				bv = -y.imag[pq, :][:, pq]
@@ -360,7 +365,7 @@ class PowerSystem:
 
 		return pv, pq, qsched
 
-	def pf_jacobian(self, v, d, pq):
+	def pf_jacobian(self, v, d, pq, decoupled=False):
 		# This function was written by Nathan Gray using formulas from chapter 9 of
 		# "Power Systems Analysis" J. Grainger et al.
 		# Calculates the Jacobian Matrix for use in the Newton-Raphson Method.
@@ -422,7 +427,11 @@ class PowerSystem:
 		jtop = np.concatenate((j11, j12), axis=1)
 		jbottom = np.concatenate((j21, j22), axis=1)
 		jacobian = np.concatenate((jtop, jbottom), axis=0)
-		return jacobian
+		if decoupled:
+			return j11, j22
+		else:
+			return jacobian
+
 
 	@staticmethod
 	def mismatch(v, d, y, pq, pvpq, psched, qsched):
