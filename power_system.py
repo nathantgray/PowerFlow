@@ -159,12 +159,9 @@ class PowerSystem:
 				i = i + 1
 		return bus_data, branch_data, mva_base
 
-	def makeybus(self):
+	def makeybus(self, make_bpp=False, make_bp=False):
 		# Produces the Y bus matrix of a power system.
 		# Written by Nathan Gray
-		# Arguments:
-		# bus_data: Bus data from the IEEE common data format as a numpy array
-		# branch_data: Branch data from the IEEE common data format as a numpy array
 
 		busShuntG = 15
 		busShuntB = 16
@@ -175,20 +172,29 @@ class PowerSystem:
 		branchTurnsRatio = 14
 		branchPhaseShift = 15
 
+		nl = self.branch_data.shape[0]  # number of lines
+		n = self.bus_data.shape[0]  # number of buses
 		# Prepare data for algorithm
-		z = self.branch_data[:, branchR] + self.branch_data[:, branchX] * 1j
+		if make_bp:
+			z = self.branch_data[:, branchX] * 1j
+		else:
+			z = self.branch_data[:, branchR] + self.branch_data[:, branchX] * 1j
 		y = z ** -1
 		b_line = self.branch_data[:, branchB]
-		ratio = np.where(self.branch_data[:, branchTurnsRatio] == 0.0, 1, self.branch_data[:, branchTurnsRatio])
-		shift = np.radians(self.branch_data[:, branchPhaseShift])
+		if make_bp:
+			ratio = np.ones(nl)
+		else:
+			ratio = np.where(self.branch_data[:, branchTurnsRatio] == 0.0, 1, self.branch_data[:, branchTurnsRatio])
+		if make_bpp:
+			shift = np.zeros(nl)
+		else:
+			shift = np.radians(self.branch_data[:, branchPhaseShift])
 		t = ratio * np.cos(shift) + 1j * ratio * np.sin(shift)
 		# Shunt admittances for each bus.
 		y_shunt = self.bus_data[:, busShuntG] + 1j * self.bus_data[:, busShuntB]
 		frombus = self.branch_data[:, 0]
 		tobus = self.branch_data[:, 1]
 
-		nl = self.branch_data.shape[0]  # number of lines
-		n = self.bus_data.shape[0]  # number of buses
 		if self.sparse:
 			y_bus = Sparse(np.array([]), np.array([]), np.array([]))
 		else:
@@ -206,6 +212,7 @@ class PowerSystem:
 		yii = yjj / (abs(t) ** 2)
 		yij = -y / np.conj(t)
 		yji = -y / t
+
 		for k in range(nl):
 			i = int(frombus[k]) - 1
 			j = int(tobus[k]) - 1
@@ -213,12 +220,14 @@ class PowerSystem:
 			y_bus[j, i] = yji[k]
 			y_bus[i, i] += yii[k]
 			y_bus[j, j] += yjj[k]
-		for i in range(n):
-			y_bus[i, i] += y_shunt[i]
+		if not make_bp:
+			for i in range(n):
+				y_bus[i, i] += y_shunt[i]
+
 
 		return y_bus
 
-	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True):
+	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2):
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -258,13 +267,13 @@ class PowerSystem:
 			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
 			# print(v, d)
 			pq_last	= deepcopy(pq)
-			if qlim:
+			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
 			# Check Limits
 				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 		print("Max iterations reached, ", i, ".")
 		return v, d, i
 
-	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100, qlim=True):
+	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100, qlim=True, qlim_prec=2):
 		# Uses Fast Decoupled method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -276,6 +285,8 @@ class PowerSystem:
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
 		y = self.y_bus
+		bp = self.makeybus(make_bp=True)
+		bpp = self.makeybus(make_bpp=True)
 		v = deepcopy(v_start)
 		d = deepcopy(d_start)
 		pvpq = self.pvpq
@@ -283,8 +294,8 @@ class PowerSystem:
 		pv = self.pv
 		pq_last = deepcopy(pq)
 		# Decoupled Power Flow
-		bd = -y.imag[pvpq, :][:, pvpq]
-		bv = -y.imag[pq, :][:, pq]
+		bd = -bp.imag[pvpq, :][:, pvpq]
+		bv = -bpp.imag[pq, :][:, pq]
 		# bd = self.pf_jacobian(v, d, pq, decoupled=True)[0]
 		# bv = self.pf_jacobian(v, d, pq, decoupled=True)[1]
 		i = 0
@@ -299,11 +310,11 @@ class PowerSystem:
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
 			v[pq] = v[pq] + mat_solve(bv, mis[len(pvpq):] / v[pq])
 			pq_last = deepcopy(pq)
-			if qlim:  # Do q-limit check
+			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):  # Do q-limit check
 				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 			# Only update bv matrix size if pq changes
 			if not np.array_equiv(pq_last, pq):
-				bv = -y.imag[pq, :][:, pq]
+				bv = -bpp.imag[pq, :][:, pq]
 
 		print("Max iterations reached, ", i, ".")
 		return v, d, i
