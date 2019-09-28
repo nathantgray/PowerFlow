@@ -196,9 +196,9 @@ class PowerSystem:
 		tobus = self.branch_data[:, 1]
 
 		if self.sparse:
-			y_bus = Sparse(np.array([]), np.array([]), np.array([]))
+			y_bus = Sparse.empty((n, n), dtype=complex)  # initialize Y Bus Matrix
 		else:
-			y_bus = np.zeros((n, n)) + np.zeros((n, n)) * 1j  # initialize Y Bus Matrix
+			y_bus = np.zeros((n, n), dtype=complex)  # initialize Y Bus Matrix
 		# The following algorithm takes the arguments: y, b_line, t, y_shunt
 		# Create the four entries of a Y-Bus matrix for each line.
 		#
@@ -252,6 +252,12 @@ class PowerSystem:
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(abs(mis)))
+			pq_last = deepcopy(pq)
+			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
+			# Check Limits
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+				# Calculate Mismatches
+				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
 				print("Newton Raphson completed in ", i, " iterations.")
@@ -266,10 +272,6 @@ class PowerSystem:
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
 			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
 			# print(v, d)
-			pq_last	= deepcopy(pq)
-			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
-			# Check Limits
-				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 		print("Max iterations reached, ", i, ".")
 		return v, d, i
 
@@ -303,18 +305,20 @@ class PowerSystem:
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(abs(mis)))
+			pq_last = deepcopy(pq)
+			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):  # Do q-limit check
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+				# Calculate Mismatches
+				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
+			# Only update bv matrix size if pq changes
+			if not np.array_equiv(pq_last, pq):
+				bv = -bpp.imag[pq, :][:, pq]
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
 				print("Decoupled Power Flow completed in ", i, " iterations.")
 				return v, d, i
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
 			v[pq] = v[pq] + mat_solve(bv, mis[len(pvpq):] / v[pq])
-			pq_last = deepcopy(pq)
-			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):  # Do q-limit check
-				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
-			# Only update bv matrix size if pq changes
-			if not np.array_equiv(pq_last, pq):
-				bv = -bpp.imag[pq, :][:, pq]
 
 		print("Max iterations reached, ", i, ".")
 		return v, d, i
@@ -398,11 +402,16 @@ class PowerSystem:
 		except:
 			row = y.rows
 			col = y.cols
-
-		j11 = np.zeros((n - 1, n - 1))
-		j12 = np.zeros((n - 1, pq.size))
-		j21 = np.zeros((pq.size, n - 1))
-		j22 = np.zeros((pq.size, pq.size))
+		if self.sparse:
+			j11 = Sparse.empty((n - 1, n - 1))
+			j12 = Sparse.empty((n - 1, pq.size))
+			j21 = Sparse.empty((pq.size, n - 1))
+			j22 = Sparse.empty((pq.size, pq.size))
+		else:
+			j11 = np.zeros((n - 1, n - 1))
+			j12 = np.zeros((n - 1, pq.size))
+			j21 = np.zeros((pq.size, n - 1))
+			j22 = np.zeros((pq.size, pq.size))
 		for a in range(row.shape[0]):
 			i = row[a]
 			j = col[a]
@@ -435,9 +444,14 @@ class PowerSystem:
 					else:  # Off-diagonals of J22
 						j22[k, l] = j11[i - 1, j - 1]
 		# Assemble jacobian
-		jtop = np.concatenate((j11, j12), axis=1)
-		jbottom = np.concatenate((j21, j22), axis=1)
-		jacobian = np.concatenate((jtop, jbottom), axis=0)
+		if self.sparse:
+			jtop = Sparse.concatenate((j11, j12), axis=1)
+			jbottom = Sparse.concatenate((j21, j22), axis=1)
+			jacobian = Sparse.concatenate((jtop, jbottom), axis=0)
+		else:
+			jtop = np.concatenate((j11, j12), axis=1)
+			jbottom = np.concatenate((j21, j22), axis=1)
+			jacobian = np.concatenate((jtop, jbottom), axis=0)
 		if decoupled:
 			return j11, j22
 		else:
