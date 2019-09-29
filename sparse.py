@@ -51,7 +51,8 @@ class Sparse:
 			if existing_k != -1:
 				if val == 0:
 					self.del_item(existing_k)
-				self.values[existing_k] = val
+				else:
+					self.values[existing_k] = val
 			else:
 				if val == 0:
 					break
@@ -349,7 +350,10 @@ class Sparse:
 			print("Vector has size ", len(vector), " but matrix has ", self.shape[1], " columns!")
 			return None
 		else:
-			result = np.array(np.zeros(len(vector)), dtype=type(self.values[0]))
+			if isinstance(sum(self.values)+sum(vector), (complex, np.complex128)):
+				result = np.array(np.zeros(len(vector)), dtype=complex)
+			else:
+				result = np.array(np.zeros(len(vector)))
 			for i in range(len(vector)):
 				k = self.fir[i]
 				while k >= 0:
