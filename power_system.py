@@ -1,11 +1,11 @@
 import numpy as np
 from copy import deepcopy
-from crout import mat_solve
+from crout_reorder import mat_solve
 from sparse import Sparse
 
 
 class PowerSystem:
-	def __init__(self, filename, sparse = False):
+	def __init__(self, filename, sparse=False):
 		self.sparse = sparse
 		self.busNumber = 0
 		self.busArea = 2

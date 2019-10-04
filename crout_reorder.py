@@ -1,10 +1,15 @@
 import numpy as np
 from sparse import Sparse as sp
 from copy import deepcopy
-def sparse_crout(mat, order=None):
+
+
+def mat_solve(mat, b, order=None):
 	# Solve the matrix equation Ax=b for x, where A is input argument, mat.
 	# returns the vector x
+	return lu_solve(sparse_crout(mat, order=order), b, order=order)
 
+
+def sparse_crout(mat, order=None):
 	# Crout
 	# Performs Crout's LU decomposition and stores it in Q = L + U - I
 	n = mat.shape[0]
@@ -20,6 +25,7 @@ def sparse_crout(mat, order=None):
 		for k in range(j+1, n):  # Fill in the jth row of the U matrix starting after the diagonal going right.
 			q[j, k] = 1/q[j, j]*(mat[o[j], o[k]] - sum([q[j, i] * q[i, k] for i in range(j)]))
 	return q
+
 
 def lu_solve(q, b, order=None):
 	# len of b must match number of cols in q
@@ -61,7 +67,7 @@ def tinny0(sparse_mat):
 
 def tinny1(sparse_mat):
 	bmat = deepcopy(sparse_mat)
-	bmat.values = bmat.values.astype(bool)
+	bmat.values = bmat.values.astype(bool)  # use binary matrix to track location of connections and fills
 	# 1. Calculate degree of each node.
 	ndegs = node_degrees(bmat)
 	# 2. Order nodes from least degree to highest.
@@ -127,25 +133,14 @@ def node_connections(sparse_mat, node):
 	return connections
 
 
-def sparse_solve(mat, b):
-	# Solve the matrix equation Ax=b for x, where A is input argument, mat.
-	# returns the vector x
-	return lu_solve(sparse_crout(mat), b)
-
-
 if __name__ == "__main__":
 	import time
-	# v = np.array([1, -2, 2, 8, 1, 3, -2, -3, 2, 1, 2, -4, 2])
-	# r = np.array([1,  1, 2, 2, 2, 3,  3,  4, 4, 5, 5,  5, 3]) - 1
-	# c = np.array([1,  3, 1, 2, 4, 3,  5,  2, 3, 1, 2,  5, 4]) - 1
 	v = np.ones((44,))
 	v = np.array([4, 1, 1, 1, 1, 4, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 6, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 7, 1, 1, 1, 1, 1, 4, 1, 2, 1, 1, 1, 4])
 	r = np.array([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 9, 9, 9, 9])
 	c = np.array([0, 1, 3, 7, 0, 1, 6, 9, 2, 3, 4, 6, 7, 9, 0, 2, 3, 4, 2, 3, 4, 5, 6, 9, 4, 5, 6, 1, 2, 4, 5, 6, 7, 8, 0, 2, 6, 7, 6, 8, 1, 2, 4, 9])
 	a = sp(r, c, v)
 	b = np.array(range(a.shape[1]))
-	# b = np.array([[1], [1], [1], [1]])
-	# b = np.array([1, 1, 1, 1])
 
 	# Test 1: no ordering
 	print("\nStart test-1 with no ordering---------------------------")
@@ -161,6 +156,7 @@ if __name__ == "__main__":
 	print("b check =\n", a.dot(x))
 	print("alpha=", q.alpha())
 	print("beta=", q.beta())
+	print("alpha + beta = ", q.alpha() + q.beta())
 
 	# Test 2: Tinny-0 ordering
 	print("\nStart test-2 with Tinny-0 ordering---------------------------")
@@ -178,6 +174,7 @@ if __name__ == "__main__":
 	print("b check =\n", a.dot(x))
 	print("alpha=", q.alpha())
 	print("beta=", q.beta())
+	print("alpha + beta = ", q.alpha() + q.beta())
 	print("degrees: ", node_degrees(a))
 	ndegs = node_degrees(a)
 	print("order: ", order0)
@@ -198,6 +195,7 @@ if __name__ == "__main__":
 	print("b check =\n", a.dot(x))
 	print("alpha=", q.alpha())
 	print("beta=", q.beta())
+	print("alpha + beta = ", q.alpha() + q.beta())
 	print("degrees: ", node_degrees(a))
 	ndegs = node_degrees(a)
 	print("order: ", order1)

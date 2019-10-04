@@ -1,6 +1,7 @@
 import numpy as np
 from copy import deepcopy
 
+
 class Sparse:
 	def __init__(self, i, j, v, shape=None, dtype=float):
 		# TODO add optional arguments for setting fir, fic, nir, and nic to make calls faster
@@ -155,11 +156,11 @@ class Sparse:
 			i_start = i.start
 			i_stop = i.stop
 			i_step = i.step
-			if i_start == None:
+			if i_start is None:
 				i_start = 0
-			if i_stop == None:
+			if i_stop is None:
 				i_stop = self.shape[0]
-			if i_step == None:
+			if i_step is None:
 				i_step = 1
 			i = [index for index in range(i_start, i_stop, i_step)]
 		if isinstance(j, slice):
