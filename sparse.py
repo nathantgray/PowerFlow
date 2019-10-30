@@ -33,6 +33,7 @@ class Sparse:
 		self.make_nic()
 
 	def __setitem__(self, ij, v):
+		self.length = len(self.rows)
 		i = ij[0]
 		j = ij[1]
 		if isinstance(i, tuple):
@@ -61,23 +62,25 @@ class Sparse:
 				self.cols = np.r_[self.cols, j].astype(int)
 				self.values = np.r_[self.values, v]
 				# update fir and nir
-				if i[m] < len(self.fir): # True if adding new row
-					if self.fir[i[m]] < 0:
-						self.fir[i[m]] = self.length + m
-						self.nir = np.r_[self.nir, - 1]
-					else:
+				if i[m] < len(self.fir): # True if adding new row TODO possible error here
+					if self.fir[i[m]] < 0:  # True if no existing values in row.
+						self.fir[i[m]] = self.length + m  # set fir to k index of new value
+						self.nir = np.r_[self.nir, - 1]  # set nir to -1 for new value
+					else:  # Other values already in this row
 						# check if first in row
-						if j[m] < self.cols[self.fir[i[m]]]:
+						if j[m] < self.cols[self.fir[i[m]]]:  # If new value is first in the row
 							# adjust nir and fir
 							self.nir = np.r_[self.nir, self.fir[i[m]]]
 							self.fir[i[m]] = self.length + m
-						else:
+						else:  # If new value is not first in the row
 							# adjust nir
+							# cycle through values in row starting with the first in row
 							k_next = self.fir[i[m]]
 							while j[m] > self.cols[k_next] and self.nir[k_next] > -1:
-								k_next = self.nir[k_next]
+								# while indexed value is in a prior column and not last in row
+								k_next = self.nir[k_next]  # point to next value in row
 							self.nir = np.r_[self.nir, self.nir[k_next]]
-							self.nir[k_next] = self.length + m
+							self.nir[k_next] = self.length + m  # TODO self.length is the wrong value. 49 but should be 146
 				else:  # not adding a new row
 					while len(self.fir) < i[m]:
 						self.fir = np.r_[self.fir, -1]
@@ -236,6 +239,7 @@ class Sparse:
 		self.cols = np.delete(self.cols, k)
 		self.nir = np.delete(self.nir, k)
 		self.nic = np.delete(self.nic, k)
+		self.length = len(self.rows)
 
 	def pir(self, k):  # Previous in row
 		p = self.fir[self.rows[k]]
@@ -268,6 +272,9 @@ class Sparse:
 				k = self.nir[k]
 				if k == -1:  # end of row and value not found
 					return k
+				if self.rows[k] != i:
+					print("Seaching for ", (i, j))
+					print("------------Row should be ", i, " but is ", self.rows[k], ".")
 			if self.rows[k] == i and self.cols[k] == j:
 				return k
 
@@ -457,6 +464,7 @@ class Sparse:
 			# NIR
 			mat1.shape = (mat1.shape[0], mat1.shape[1] + mat2.shape[1])
 			mat1.make_nir()
+		mat1.length = len(mat1.rows)
 		return mat1
 
 	@classmethod

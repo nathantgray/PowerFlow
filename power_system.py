@@ -227,7 +227,7 @@ class PowerSystem:
 
 		return y_bus
 
-	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2):
+	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None):
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -238,6 +238,9 @@ class PowerSystem:
 		print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
+		if lam is not None:
+			psched = lam*psched
+			qsched = lam*qsched
 		v = deepcopy(v_start)
 		d = deepcopy(d_start)
 		y = self.y_bus
@@ -397,11 +400,11 @@ class PowerSystem:
 		q = s.imag
 
 		# Find indices of non-zero ybus entries
-		try:
-			row, col = np.where(y)
-		except:
+		if self.sparse:
 			row = y.rows
 			col = y.cols
+		else:
+			row, col = np.where(y)
 		if self.sparse:
 			j11 = Sparse.empty((n - 1, n - 1))
 			j12 = Sparse.empty((n - 1, pq.size))
@@ -459,7 +462,7 @@ class PowerSystem:
 
 
 	@staticmethod
-	def mismatch(v, d, y, pq, pvpq, psched, qsched):
+	def mismatch(v, d, y, pq, pvpq, psched, qsched, lam=None):
 		# This function was written by Nathan Gray
 		# This function calculates mismatches between the real and reactive power
 		# injections in a system vs. the scheduled injections.
@@ -472,13 +475,18 @@ class PowerSystem:
 		# pvpq: list of PV and pq buses
 		# psched, qsched: list of real, reactive power injections
 
+		if lam is None:
+			λ = 1
+		else:
+			λ = lam
+
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
 		# S = P + jQ
 		pcalc = s[pvpq].real
 		qcalc = s[pq].imag
-		dp = psched - pcalc
-		dq = qsched - qcalc
+		dp = λ*psched - pcalc
+		dq = λ*qsched - qcalc
 		mis = np.concatenate((dp, dq))
 		return mis, pcalc, qcalc
 
@@ -489,15 +497,196 @@ class PowerSystem:
 		d_flat = np.zeros(v_flat.shape)
 		return v_flat, d_flat
 
+	@staticmethod
+	def pf_dc(d, y, pvpq, psched, lam=None):
+		bdc = -y.imag[pvpq, :][:, pvpq]
+		if lam is not None:
+			d[pvpq] = mat_solve(bdc, lam*psched)
+		else:
+			d[pvpq] = mat_solve(bdc, psched)
+		return d
+
+	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None):
+		# Uses Newton-Raphson method to solve the power-flow of a power system.
+		# Written by Nathan Gray
+		# Arguments:
+		# v_start: list of voltage magnitudes in system
+		# d_start: list of voltage phase angles in system
+		# prec: program finishes when all mismatches < 10^-abs(prec)
+		# maxit: maximum number of iterations
+		print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
+		psched = deepcopy(self.psched)
+		qsched = deepcopy(self.qsched)
+		if lam is not None:
+			psched = psched*(1 + lam)
+			qsched = qsched*(1 + lam)
+		v = deepcopy(v_start)
+		d = deepcopy(d_start)
+		y = self.y_bus
+		pvpq = self.pvpq
+		pq = deepcopy(self.pq)
+		pv = deepcopy(self.pv)
+		pq_last = deepcopy(pq)
+		n = np.shape(y)[0]
+		i = 0
+		# Newton Raphson
+		for i in range(maxit+1):
+			# Calculate Mismatches
+			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
+			print("error: ", max(abs(mis)))
+			pq_last = deepcopy(pq)
+			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
+			# Check Limits
+				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+				# Calculate Mismatches
+				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
+			# Check error
+			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
+				print("Newton Raphson completed in ", i, " iterations.")
+				# pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+				return v, d, i
+			# Calculate Jacobian
+			j = self.pf_jacobian(v, d, pq)
+			# Calculate update values
+			dx = mat_solve(j, mis)
+			# Update angles: d_(n+1) = d_n + dd
+			d[pvpq] = d[pvpq] + dx[:n - 1]
+			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
+			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
+			# print(v, d)
+		print("Max iterations reached, ", i, ".")
+		return v, d, i
+
+	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
+		# Build parameterized jacobian for continuation power flow.
+		jac = self.pf_jacobian(v, d, pq)
+		# add row for ek and col for psched and qsched
+		nrows = jac.shape[0]
+		ncols = jac.shape[1]
+		if self.sparse:
+			for row in range(nrows):
+				jac[row, ncols] = kpq[row]
+			jac[nrows, kt] = sign
+		else:
+			ek = np.zeros((1, ncols))
+			ek[kt] = sign
+			jac = np.c_[jac, kpq]
+			jac = np.r_[jac, ek]
+		return jac
+
+	def voltage_stability(self):
+		print("\n~~~~~~~~~~ Start Voltage Stability Analysis ~~~~~~~~~~\n")
+		σ = 0.1
+		λ = 0
+		psched = self.psched
+		qsched = deepcopy(self.qsched)
+		kpq = np.r_[psched, qsched]
+		y = self.y_bus
+		n = np.shape(y)[0]
+		pvpq = self.pvpq
+		pq = deepcopy(self.pq)
+		# ~~~~~~~ Run Conventional Power Flow on Base Case ~~~~~~~~~~
+		v, d = self.flat_start()
+		d = self.pf_dc(d, y, pvpq, psched, lam=λ)
+		v, d, it = ps.pf_newtonraphson(v, d, prec=3, maxit=10, qlim=False, lam=λ)
+		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		watch_bus = 1
+		results = [[σ, v[watch_bus], d[watch_bus], λ, psched[0]]]
+		phase = 1  # phase 1 -> increasing load, phase 2 -> decreasing V, phase 3 -> decreasing load
+
+		# Continuation Power Flow or Voltage Stability Analysis
+		while True:
+
+
+			# Calculate Jacobian
+			if phase == 1:
+				kt = len(pvpq) + len(pq)
+				tk = 1
+			if phase == 2:
+				kt = len(pvpq) + watch_bus - 1
+				tk = -1
+			if phase == 3:
+				kt = len(pvpq) + len(pq)
+				tk = -1
+			jac = self.cpf_jacobian(v, d, pq, kpq, kt, 1)
+
+			# Calculate update values
+			# ~~~~~~~~~~ Calculated Tangent Vector ~~~~~~~~~~
+			t = mat_solve(jac, np.r_[np.zeros(jac.shape[0]-1), tk])
+			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+			# ~~~~~~~~~~ Check stopping criteria ~~~~~~~~~~
+			if λ < 0.35 and phase == 2:
+				break
+			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+			# ~~~~~~~~~~ Choose Continuation Parameter For Next Step ~~~~~~~~~~
+			_kt = np.argmax(abs(t))
+			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+			# Update angles: d_(n+1) = d_n + dd
+			d_pred = d
+			d_pred[pvpq] = d[pvpq] + σ*t[:n - 1]
+			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
+			v_pred = v
+			v_pred[pq] = v[pq] + σ*v[pq]*t[n - 1:n + pq.size - 1]
+			# Update Lambda
+			λ_pred = λ + σ*t[-1]
+			# ~~~~~~~~~~ Corrector ~~~~~~~~~~
+
+			d_cor = deepcopy(d_pred)
+			v_cor = deepcopy(v_pred)
+			λ_cor = deepcopy(λ_pred)
+			it = 0
+			while it < 6:
+				mis, p_calc, q_calc = self.mismatch(v_cor, d_cor, y, pq, pvpq, (1+λ_cor)*psched, (1+λ_cor)*qsched)
+				if phase == 1 or phase == 3:
+					mis = np.r_[mis, λ_pred - λ_cor]
+				if phase == 2:
+					mis = np.r_[mis, v_pred[watch_bus] - v_cor[watch_bus]]
+				# Check error
+				if max(abs(mis)) < 10**-2:
+					break  # return v, d, it
+				jac = self.cpf_jacobian(v_cor, d_cor, pq, kpq, kt, tk)
+				# Calculate update values
+				dx = mat_solve(jac, mis)
+				# Update angles: d_(n+1) = d_n + dd
+				d_cor[pvpq] = d_cor[pvpq] + dx[:n - 1]
+				# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
+				v_cor[pq] = v_cor[pq] + v_cor[pq]*dx[n - 1:n + pq.size - 1]
+				# Update Lambda
+				λ_cor = λ_cor + dx[-1]
+				it += 1
+
+			if phase == 1:
+				if it == 6:
+					phase = 2
+					σ = 0.0025
+				else:
+					v = v_cor
+					d = d_cor
+					λ = λ_cor
+					results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
+
+			elif phase == 2:
+				if it == 6:
+					print("phase 2 not converged")
+					break
+				v = v_cor
+				d = d_cor
+				λ = λ_cor
+				results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
+
+		return results
 
 if __name__ == "__main__":
+	import matplotlib.pyplot as plt
 	# case_name = "IEEE14BUS.txt"
-	case_name = "IEEE14BUS_handout.txt"
-	ps = PowerSystem(case_name)
-	v0, d0 = ps.flat_start()
-	v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10)
-	v_fd, d_fd, it = ps.pf_fast_decoupled(v0, d0, prec=2, maxit=100)
-	s_nr = (v_nr * np.exp(1j * d_nr)) * np.conj(ps.y_bus.dot(v_nr * np.exp(1j * d_nr)))
-	print(v_nr)
-	print(s_nr.real * ps.p_base)
-	print(s_nr.imag * ps.p_base)
+	# case_name = "IEEE14BUS_handout.txt""
+	case_name = "2BUS.txt"
+	ps = PowerSystem(case_name, sparse=True)
+	#v0, d0 = ps.flat_start()
+	#v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10, qlim=False, lam=4)
+	results = ps.voltage_stability()
+	plt.plot(results[:, 3], results[:, 1])
+	plt.xlim((3, 4))
+	plt.ylim((0,1))
+	plt.show()
+
