@@ -460,6 +460,8 @@ class PowerSystem:
 		else:
 			return jacobian
 
+	def se_jacobian(self, v, d, pq):
+		pass
 
 	@staticmethod
 	def mismatch(v, d, y, pq, pvpq, psched, qsched, lam=None):
@@ -489,6 +491,36 @@ class PowerSystem:
 		dq = λ*qsched - qcalc
 		mis = np.concatenate((dp, dq))
 		return mis, pcalc, qcalc
+
+	def complex_injections(self, v, d):
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(self.y_bus.dot(v * np.exp(1j * d)))
+		return s
+
+	def branch_flows(self, v, d):
+		p_ij = np.zeros(self.branch_data[:, 0].shape)
+		p_ji = np.zeros(self.branch_data[:, 0].shape)
+		q_ij = np.zeros(self.branch_data[:, 0].shape)
+		q_ji = np.zeros(self.branch_data[:, 0].shape)
+		b_charging = self.branch_data[:, self.branchB]
+		for b, _ in enumerate(self.branch_data[:, 0]):
+			from_bus = self.branch_data[b, 0]
+			to_bus = self.branch_data[b, 1]
+			i = int(from_bus - 1)
+			j = int(to_bus - 1)
+			gij = np.real(self.y_bus[i, j])
+			bij = np.imag(self.y_bus[i, j])
+			yij = np.abs(self.y_bus[i, j])
+			th_ij = np.angle(self.y_bus[i, j])
+			p_ij[b] = -v[i]**2*gij + v[i]*v[j]*yij*np.cos(th_ij + d[j] - d[i])
+			q_ij[b] = -v[i]**2*(b_charging[b]/2 - bij) - v[i]*v[j]*yij*np.sin(th_ij + d[j] - d[i])
+			gji = np.real(self.y_bus[j, i])
+			bji = np.imag(self.y_bus[j, i])
+			yji = np.abs(self.y_bus[j, i])
+			th_ji = np.angle(self.y_bus[j, i])
+			p_ji[b] = -v[j]**2*gji + v[j]*v[i]*yji*np.cos(th_ji + d[i] - d[j])
+			q_ji[b] = -v[j]**2*(b_charging[b]/2 - bji) - v[j]*v[i]*yji*np.sin(th_ji + d[i] - d[j])
+		return p_ij, q_ij, p_ji, q_ji
 
 	def flat_start(self):
 		# Initialize with flat start
