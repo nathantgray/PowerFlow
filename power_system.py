@@ -2,6 +2,7 @@ import numpy as np
 from copy import deepcopy
 from crout_reorder import mat_solve
 from sparse import Sparse
+from numpy import sin, cos, angle, imag, real
 
 
 class PowerSystem:
@@ -460,8 +461,135 @@ class PowerSystem:
 		else:
 			return jacobian
 
-	def se_jacobian(self, v, d, pq):
-		pass
+	def se_h_matrix(self, v, d):
+		y = self.y_bus
+		n = y.shape[0]
+		nb = len(self.branch_data[:, 0])
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		p = s.real
+		q = s.imag
+
+		# Find indices of non-zero ybus entries
+		if self.sparse:
+			row = y.rows
+			col = y.cols
+		else:
+			row, col = np.where(y)
+		if self.sparse:
+			j01 = Sparse.empty((n, n)) # TODO Check size!
+			j02 = Sparse.empty((n, n))
+			j11 = Sparse.empty((n, n))
+			j12 = Sparse.empty((n, n))
+			j21 = Sparse.empty((n, n))
+			j22 = Sparse.empty((n, n))
+			j31 = Sparse.empty((nb, n))
+			j32 = Sparse.empty((nb, n))
+			j41 = Sparse.empty((nb, n))
+			j42 = Sparse.empty((nb, n))
+			j51 = Sparse.empty((nb, n))
+			j52 = Sparse.empty((nb, n))
+			j61 = Sparse.empty((nb, n))
+			j62 = Sparse.empty((nb, n))
+		else:
+			j01 = np.zeros((n, n))
+			j02 = np.zeros((n, n))
+			j11 = np.zeros((n, n))
+			j12 = np.zeros((n, n))
+			j21 = np.zeros((n, n))
+			j22 = np.zeros((n, n))
+			j31 = np.zeros((nb, n))
+			j32 = np.zeros((nb, n))
+			j41 = np.zeros((nb, n))
+			j42 = np.zeros((nb, n))
+			j51 = np.zeros((nb, n))
+			j52 = np.zeros((nb, n))
+			j61 = np.zeros((nb, n))
+			j62 = np.zeros((nb, n))
+
+		for i in range(n):
+			j02[i, i] = 1
+		for a in range(row.shape[0]):
+			i = row[a]
+			j = col[a]
+			# J11
+			if i == j:  # Diagonals of J11
+				j11[i, j] = - q[i] - v[i] ** 2 * y[i, i].imag
+			else:  # Off-diagonals of J11
+				j11[i, j] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+			# J21
+			if i == j:  # Diagonals of J21
+				j21[i, j] = p[i] - abs(v[i]) ** 2 * y[i, j].real
+			else:  # Off-diagonals of J21
+				j21[i, j] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+			# J12
+			if i == j:  # Diagonals of J12
+				j12[i, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
+			else:  # Off-diagonals of J12
+				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
+			# J22
+			if i == j:  # Diagonal of J22
+				j22[i, j] = (-j11[i, j] - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+			else:  # Off-diagonals of J22
+				j22[i, j] = (j11[i, j])/v[j]
+
+		for b, _ in enumerate(self.branch_data[:, 0]):
+			from_bus = self.branch_data[b, 0]
+			to_bus = self.branch_data[b, 1]
+			i = int(from_bus - 1)
+			j = int(to_bus - 1)
+			b_chrg = self.branch_data[b, self.branchB]
+			# J31 dPij/dd
+			j31[b, i] = -v[i]*v[j]*abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i]) # TODO Check signs
+			j31[b, j] = v[i]*v[j]*abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i]) # TODO Check signs
+			# J32 dPij/dV
+			j32[b, i] = -2*v[i]*real(y[i, j]) + v[j]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
+			j32[b, j] = v[i]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
+			# J41 dQij/dd
+			j41[b, i] = v[i]*v[j]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
+			j41[b, j] = -v[i] * v[j] * abs(y[i, j]) * cos(angle(y[i, j]) + d[j] - d[i])
+			# J42 dQij/dV
+			j42[b, i] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
+			j42[b, j] = -v[i]*abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i])
+			# J51 dPji/dd
+			j51[b, j] = -v[j]*v[i]*abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])  # TODO Check signs
+			j51[b, i] = v[j]*v[i]*abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])  # TODO Check signs
+			# J52 dPji/dV
+			j52[b, j] = -2*v[j]*real(y[j, i]) + v[i]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
+			j52[b, i] = v[j]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
+			# J61 dQji/dd
+			j61[b, j] = v[j]*v[i]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
+			j61[b, i] = -v[j] * v[i] * abs(y[j, i]) * cos(angle(y[j, i]) + d[i] - d[j])
+			# J62 dQji/dV
+			j62[b, j] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
+			j62[b, i] = -v[j]*abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])
+
+		# Assemble jacobian
+		if self.sparse:
+			j0 = Sparse.concatenate((j01, j02), axis=1)
+			j1 = Sparse.concatenate((j11, j12), axis=1)
+			j2 = Sparse.concatenate((j21, j22), axis=1)
+			j3 = Sparse.concatenate((j31, j32), axis=1)
+			j4 = Sparse.concatenate((j41, j42), axis=1)
+			j5 = Sparse.concatenate((j51, j52), axis=1)
+			j6 = Sparse.concatenate((j61, j62), axis=1)
+			j0_1 = Sparse.concatenate((j0, j1), axis=0)
+			j2_3 = Sparse.concatenate((j2, j3), axis=0)
+			j4_5 = Sparse.concatenate((j4, j5), axis=0)
+			j0_3 = Sparse.concatenate((j0_1, j2_3), axis=0)
+			j4_6 = Sparse.concatenate((j4_5, j6), axis=0)
+			jacobian = Sparse.concatenate((j0_3, j4_6), axis=0)
+		else:
+			j0 = np.concatenate((j01, j02), axis=1)
+			j1 = np.concatenate((j11, j12), axis=1)
+			j2 = np.concatenate((j21, j22), axis=1)
+			j3 = np.concatenate((j31, j32), axis=1)
+			j4 = np.concatenate((j41, j42), axis=1)
+			j5 = np.concatenate((j51, j52), axis=1)
+			j6 = np.concatenate((j61, j62), axis=1)
+			jacobian = np.concatenate((j0, j1, j2, j3, j4, j5, j6), axis=0)
+
+		return jacobian
 
 	@staticmethod
 	def mismatch(v, d, y, pq, pvpq, psched, qsched, lam=None):

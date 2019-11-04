@@ -350,7 +350,7 @@ class Sparse:
 			type = self.dtype
 		full_array = np.zeros(self.shape, dtype=type)
 		for k, value in enumerate(self.values):
-			full_array[self.rows[k], self.cols[k]] = value
+			full_array[int(self.rows[k]), int(self.cols[k])] = value
 		return full_array
 
 	def dot(self, vector):
