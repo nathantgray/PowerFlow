@@ -539,30 +539,35 @@ class PowerSystem:
 			i = int(from_bus - 1)
 			j = int(to_bus - 1)
 			b_chrg = self.branch_data[b, self.branchB]
+			ycosij = abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
+			ycosji = abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
+			ysinij = abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i])
+			ysinji = abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])
 			# J31 dPij/dd
-			j31[b, i] = -v[i]*v[j]*abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i]) # TODO Check signs
-			j31[b, j] = v[i]*v[j]*abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i]) # TODO Check signs
+			j31[b, i] = v[i]*v[j]*ysinij
+			j31[b, j] = -j31[b, i]
 			# J32 dPij/dV
-			j32[b, i] = -2*v[i]*real(y[i, j]) + v[j]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
-			j32[b, j] = v[i]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
+			j32[b, i] = -2*v[i]*real(y[i, j]) + v[j]*ycosij
+			j32[b, j] = v[i]*ycosij
 			# J41 dQij/dd
-			j41[b, i] = v[i]*v[j]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
-			j41[b, j] = -v[i] * v[j] * abs(y[i, j]) * cos(angle(y[i, j]) + d[j] - d[i])
+			j41[b, i] = v[i]*v[j]*ycosij
+			j41[b, j] = -j41[b, i]
 			# J42 dQij/dV
-			j42[b, i] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
-			j42[b, j] = -v[i]*abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i])
+			j42[b, i] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
+			j42[b, j] = -v[i]*ysinij
+
 			# J51 dPji/dd
-			j51[b, j] = -v[j]*v[i]*abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])  # TODO Check signs
-			j51[b, i] = v[j]*v[i]*abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])  # TODO Check signs
+			j51[b, j] = v[j]*v[i]*ysinji
+			j51[b, i] = -j51[b, j]
 			# J52 dPji/dV
-			j52[b, j] = -2*v[j]*real(y[j, i]) + v[i]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
-			j52[b, i] = v[j]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
+			j52[b, j] = -2*v[j]*real(y[j, i]) + v[i]*ycosji
+			j52[b, i] = v[j]*ycosji
 			# J61 dQji/dd
-			j61[b, j] = v[j]*v[i]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
-			j61[b, i] = -v[j] * v[i] * abs(y[j, i]) * cos(angle(y[j, i]) + d[i] - d[j])
+			j61[b, j] = v[j]*v[i]*ycosji
+			j61[b, i] = -j61[b, j]
 			# J62 dQji/dV
-			j62[b, j] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
-			j62[b, i] = -v[j]*abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])
+			j62[b, j] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
+			j62[b, i] = -v[j]*ysinji
 
 		# Assemble jacobian
 		if self.sparse:
@@ -640,14 +645,14 @@ class PowerSystem:
 			bij = np.imag(self.y_bus[i, j])
 			yij = np.abs(self.y_bus[i, j])
 			th_ij = np.angle(self.y_bus[i, j])
-			p_ij[b] = -v[i]**2*gij + v[i]*v[j]*yij*np.cos(th_ij + d[j] - d[i])
-			q_ij[b] = -v[i]**2*(b_charging[b]/2 - bij) - v[i]*v[j]*yij*np.sin(th_ij + d[j] - d[i])
+			p_ij[b] = round(-v[i]**2*gij + v[i]*v[j]*yij*np.cos(th_ij + d[j] - d[i]), 14)
+			q_ij[b] = round(-v[i]**2*(b_charging[b]/2 - bij) - v[i]*v[j]*yij*np.sin(th_ij + d[j] - d[i]), 14)
 			gji = np.real(self.y_bus[j, i])
 			bji = np.imag(self.y_bus[j, i])
 			yji = np.abs(self.y_bus[j, i])
 			th_ji = np.angle(self.y_bus[j, i])
-			p_ji[b] = -v[j]**2*gji + v[j]*v[i]*yji*np.cos(th_ji + d[i] - d[j])
-			q_ji[b] = -v[j]**2*(b_charging[b]/2 - bji) - v[j]*v[i]*yji*np.sin(th_ji + d[i] - d[j])
+			p_ji[b] = round(-v[j]**2*gji + v[j]*v[i]*yji*np.cos(th_ji + d[i] - d[j]), 14)
+			q_ji[b] = round(-v[j]**2*(b_charging[b]/2 - bji) - v[j]*v[i]*yji*np.sin(th_ji + d[i] - d[j]), 14)
 		return p_ij, q_ij, p_ji, q_ji
 
 	def flat_start(self):
