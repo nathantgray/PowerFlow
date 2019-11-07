@@ -35,7 +35,7 @@ if __name__ == "__main__":
 	q_stdev = 0.02
 	pij_stdev = 0.015  # p_stdev/2
 	qij_stdev = 0.02  # q_stdev/2
-	np.random.seed(59)
+	# np.random.seed(2)
 	v_noise = np.random.normal(0, v_stdev, v.shape)
 	p_noise = np.random.normal(0, p_stdev, p.shape)
 	q_noise = np.random.normal(0, q_stdev, q.shape)
@@ -43,6 +43,7 @@ if __name__ == "__main__":
 	qij_noise = np.random.normal(0, qij_stdev, qij.shape)
 	pji_noise = np.random.normal(0, pij_stdev, pji.shape)
 	qji_noise = np.random.normal(0, qij_stdev, qji.shape)
+	print('qji_std=', np.std(qji_noise))
 	v_meas = v + v_noise
 	p_meas = p + p_noise
 	q_meas = q + q_noise
@@ -50,6 +51,15 @@ if __name__ == "__main__":
 	pji_meas = pji + pji_noise
 	qij_meas = qij + qij_noise
 	qji_meas = qji + qji_noise
+	# ~~~~~ add bad data ~~~~~
+	# v_meas[0] = v[0] + 5*v_stdev
+	# v_meas[1] = v[1] + -9*v_stdev
+	# v_meas[2] = v[2] + 6*v_stdev
+	# v_meas[3] = v[3] + 1000*v_stdev
+	# v_meas[4] = v[4] + 4*v_stdev
+	# pij_meas[1] = pij[1] - 3.1*pij_stdev
+	# qji_meas[4] = qji[4] - 100.5*qij_stdev
+	# qji_meas[1] = qji[1] - 100.5*qij_stdev
 	# Test with 2 bus system from Grainger book example 15.6
 	if case_name == "2BUS.txt":
 		v_meas[0] = 1.02
@@ -92,7 +102,7 @@ if __name__ == "__main__":
 		gain = h.T @ w @ h
 		dx = inv(gain) @ h.T @ w @ dz
 		print("max dx = ", max(abs(dx)))
-		if max(abs(dx)) < 0.005:
+		if max(abs(dx)) < 0.0001:
 			print("iteration: ", it)
 			break
 		d_est[1:] = d_est[1:] + dx[0:len(d0)-1]  # -1 because first angle left out
@@ -105,23 +115,16 @@ if __name__ == "__main__":
 	e_est = dz
 	r_p = (r - h @ inv(gain) @ h.T)
 	r_p_jj = (r_p * np.eye(m))
-	j_wls = sum(w @ dz ** 2)
-	exp_j = sum(sum(r_p_jj*w))
-	print('exp_j=',exp_j)
+	j_wls = sum(w @ (dz ** 2))
+	print('j_wls=', j_wls)
 	k = m - n  # degrees of freedom
 	print("k=", k)
 	alpha = 0.01  # 99% confidence interval
 	from scipy.stats.distributions import chi2
-	print(chi2.ppf(1-alpha, df=k))
+	print('critical value=', chi2.ppf(1-alpha, df=k))
+	print('max abs(dz)=', max(abs(dz)))
+	index = np.argmax(abs(dz))
+	print('index=', index)
+	print('worst dz=', dz[index])
 
-
-	def chi_cdf(x, k):
-		from scipy.special import gammainc
-		return gammainc(k/2, x/2)
-
-	print(1-chi_cdf(130, k))  # critical value is 65.9
-
-	def ichi_cdf(x, k):
-		from math import gamma
-		return gamma(k/2, 1/(2*x))/gamma()
 

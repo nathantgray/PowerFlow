@@ -548,12 +548,12 @@ class PowerSystem:
 			if i != 0:  # Do not include derivatives w.r.t. d[0]
 				# J31 dPij/dd[i]
 				j31[b, i - 1] = v[i]*v[j]*ysinij
-				# J41 dQij/dd
+				# J41 dQij/dd[i]
 				j41[b, i - 1] = v[i]*v[j]*ycosij
-				# J51 dPji/dd
-				j51[b, j - 1] = v[j]*v[i]*ysinji
-				# J61 dQji/dd
-				j61[b, j - 1] = v[j]*v[i]*ycosji
+				# J51 dPji/dd[i]
+				j51[b, i - 1] = -v[j]*v[i]*ysinji
+				# J61 dQji/dd[i]
+				j61[b, i - 1] = -v[j]*v[i]*ycosji
 
 			if j != 0:  # Do not include derivatives w.r.t. d[0]
 				# J31 dPij/dd[j]
@@ -561,18 +561,18 @@ class PowerSystem:
 				# J41 dQij/dd
 				j41[b, j - 1] = -v[i]*v[j]*ycosij
 				# J51 dPji/dd
-				j51[b, i - 1] = -v[j]*v[i]*ysinji
+				j51[b, j - 1] = v[j]*v[i]*ysinji
 				# J61 dQji/dd
-				j61[b, i - 1] = -v[j]*v[i]*ycosji
+				j61[b, j - 1] = v[j]*v[i]*ycosji
 
 			# J32 dPij/dV
-			j32[b, i - 1] = -2*v[i]*real(y[i, j]) + v[j]*ycosij
+			j32[b, i - 1] = 2*v[i]*real(y[i, j]) + v[j]*ycosij
 			j32[b, j - 1] = v[i]*ycosij
 			# J42 dQij/dV
 			j42[b, i - 1] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
 			j42[b, j - 1] = -v[i]*ysinij
 			# J52 dPji/dV
-			j52[b, j - 1] = -2*v[j]*real(y[j, i]) + v[i]*ycosji
+			j52[b, j - 1] = 2*v[j]*real(y[j, i]) + v[i]*ycosji
 			j52[b, i - 1] = v[j]*ycosji
 			# J62 dQji/dV
 			j62[b, j - 1] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
