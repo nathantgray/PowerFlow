@@ -477,34 +477,34 @@ class PowerSystem:
 		else:
 			row, col = np.where(y)
 		if self.sparse:
-			j01 = Sparse.empty((n, n)) # TODO Check size!
+			j01 = Sparse.empty((n, n - 1))
 			j02 = Sparse.empty((n, n))
-			j11 = Sparse.empty((n, n))
+			j11 = Sparse.empty((n, n - 1))
 			j12 = Sparse.empty((n, n))
-			j21 = Sparse.empty((n, n))
+			j21 = Sparse.empty((n, n - 1))
 			j22 = Sparse.empty((n, n))
-			j31 = Sparse.empty((nb, n))
+			j31 = Sparse.empty((nb, n - 1))
 			j32 = Sparse.empty((nb, n))
-			j41 = Sparse.empty((nb, n))
+			j41 = Sparse.empty((nb, n - 1))
 			j42 = Sparse.empty((nb, n))
-			j51 = Sparse.empty((nb, n))
+			j51 = Sparse.empty((nb, n - 1))
 			j52 = Sparse.empty((nb, n))
-			j61 = Sparse.empty((nb, n))
+			j61 = Sparse.empty((nb, n - 1))
 			j62 = Sparse.empty((nb, n))
 		else:
-			j01 = np.zeros((n, n))
+			j01 = np.zeros((n, n - 1))
 			j02 = np.zeros((n, n))
-			j11 = np.zeros((n, n))
+			j11 = np.zeros((n, n - 1))
 			j12 = np.zeros((n, n))
-			j21 = np.zeros((n, n))
+			j21 = np.zeros((n, n - 1))
 			j22 = np.zeros((n, n))
-			j31 = np.zeros((nb, n))
+			j31 = np.zeros((nb, n - 1))
 			j32 = np.zeros((nb, n))
-			j41 = np.zeros((nb, n))
+			j41 = np.zeros((nb, n - 1))
 			j42 = np.zeros((nb, n))
-			j51 = np.zeros((nb, n))
+			j51 = np.zeros((nb, n - 1))
 			j52 = np.zeros((nb, n))
-			j61 = np.zeros((nb, n))
+			j61 = np.zeros((nb, n - 1))
 			j62 = np.zeros((nb, n))
 
 		for i in range(n):
@@ -513,15 +513,16 @@ class PowerSystem:
 			i = row[a]
 			j = col[a]
 			# J11
-			if i == j:  # Diagonals of J11
-				j11[i, j] = - q[i] - v[i] ** 2 * y[i, i].imag
-			else:  # Off-diagonals of J11
-				j11[i, j] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
-			# J21
-			if i == j:  # Diagonals of J21
-				j21[i, j] = p[i] - abs(v[i]) ** 2 * y[i, j].real
-			else:  # Off-diagonals of J21
-				j21[i, j] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+			if j != 0:
+				if i == j:  # Diagonals of J11
+					j11[i, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
+				else:  # Off-diagonals of J11
+					j11[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+				# J21
+				if i == j:  # Diagonals of J21
+					j21[i, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
+				else:  # Off-diagonals of J21
+					j21[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
 			# J12
 			if i == j:  # Diagonals of J12
 				j12[i, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
@@ -529,9 +530,9 @@ class PowerSystem:
 				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
 			# J22
 			if i == j:  # Diagonal of J22
-				j22[i, j] = (-j11[i, j] - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+				j22[i, j] = (q[i] - v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
 			else:  # Off-diagonals of J22
-				j22[i, j] = (j11[i, j])/v[j]
+				j22[i, j] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
 
 		for b, _ in enumerate(self.branch_data[:, 0]):
 			from_bus = self.branch_data[b, 0]
@@ -543,31 +544,39 @@ class PowerSystem:
 			ycosji = abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
 			ysinij = abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i])
 			ysinji = abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])
-			# J31 dPij/dd
-			j31[b, i] = v[i]*v[j]*ysinij
-			j31[b, j] = -j31[b, i]
-			# J32 dPij/dV
-			j32[b, i] = -2*v[i]*real(y[i, j]) + v[j]*ycosij
-			j32[b, j] = v[i]*ycosij
-			# J41 dQij/dd
-			j41[b, i] = v[i]*v[j]*ycosij
-			j41[b, j] = -j41[b, i]
-			# J42 dQij/dV
-			j42[b, i] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
-			j42[b, j] = -v[i]*ysinij
 
-			# J51 dPji/dd
-			j51[b, j] = v[j]*v[i]*ysinji
-			j51[b, i] = -j51[b, j]
+			if i != 0:  # Do not include derivatives w.r.t. d[0]
+				# J31 dPij/dd[i]
+				j31[b, i - 1] = v[i]*v[j]*ysinij
+				# J41 dQij/dd
+				j41[b, i - 1] = v[i]*v[j]*ycosij
+				# J51 dPji/dd
+				j51[b, j - 1] = v[j]*v[i]*ysinji
+				# J61 dQji/dd
+				j61[b, j - 1] = v[j]*v[i]*ycosji
+
+			if j != 0:  # Do not include derivatives w.r.t. d[0]
+				# J31 dPij/dd[j]
+				j31[b, j - 1] = -v[i]*v[j]*ysinij
+				# J41 dQij/dd
+				j41[b, j - 1] = -v[i]*v[j]*ycosij
+				# J51 dPji/dd
+				j51[b, i - 1] = -v[j]*v[i]*ysinji
+				# J61 dQji/dd
+				j61[b, i - 1] = -v[j]*v[i]*ycosji
+
+			# J32 dPij/dV
+			j32[b, i - 1] = -2*v[i]*real(y[i, j]) + v[j]*ycosij
+			j32[b, j - 1] = v[i]*ycosij
+			# J42 dQij/dV
+			j42[b, i - 1] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
+			j42[b, j - 1] = -v[i]*ysinij
 			# J52 dPji/dV
-			j52[b, j] = -2*v[j]*real(y[j, i]) + v[i]*ycosji
-			j52[b, i] = v[j]*ycosji
-			# J61 dQji/dd
-			j61[b, j] = v[j]*v[i]*ycosji
-			j61[b, i] = -j61[b, j]
+			j52[b, j - 1] = -2*v[j]*real(y[j, i]) + v[i]*ycosji
+			j52[b, i - 1] = v[j]*ycosji
 			# J62 dQji/dV
-			j62[b, j] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
-			j62[b, i] = -v[j]*ysinji
+			j62[b, j - 1] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
+			j62[b, i - 1] = -v[j]*ysinji
 
 		# Assemble jacobian
 		if self.sparse:
