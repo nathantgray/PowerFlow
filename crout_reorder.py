@@ -17,7 +17,7 @@ def sparse_crout(mat, order=None):
 		o = np.array(range(n))
 	else:
 		o = order
-	q = sp.empty(mat.shape)
+	q = sp.zeros(mat.shape)
 	# q = mat
 	for j in range(n):  # For each column, j:
 		for k in range(j, n):  # Fill in jth column of the L matrix starting at diagonal going down.

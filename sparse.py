@@ -369,6 +369,11 @@ class Sparse:
 					k = self.nir[k]
 			return result
 
+	@staticmethod
+	def where(sparse_mat):
+		return (sparse_mat.rows, sparse_mat.cols)
+
+
 	def __neg__(self):
 		return self.return_new_object(self.rows, self.cols, -self.values)
 
@@ -468,7 +473,7 @@ class Sparse:
 		return mat1
 
 	@classmethod
-	def empty(cls, shape, dtype=float):
+	def zeros(cls, shape, dtype=float):
 		return cls(np.array([]), np.array([]), np.array([]), shape=shape, dtype=dtype)
 
 
@@ -501,11 +506,11 @@ if __name__ == "__main__":
 	#new_a = a[[0, 1, 2], 1]
 	print(a.full())
 	#print(new_a.full())
-	mat1 = Sparse.empty((3, 2))
+	mat1 = Sparse.zeros((3, 2))
 	mat1[0, 0] = 1
 	mat1[1, 1] = 2
 	mat1[2, 0] = 3
-	mat2 = Sparse.empty((3, 2))
+	mat2 = Sparse.zeros((3, 2))
 	mat2[0, 0] = 4
 	mat2[1, 0] = 6
 	mat2[1, 1] = 7

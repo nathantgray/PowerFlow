@@ -197,7 +197,7 @@ class PowerSystem:
 		tobus = self.branch_data[:, 1]
 
 		if self.sparse:
-			y_bus = Sparse.empty((n, n), dtype=complex)  # initialize Y Bus Matrix
+			y_bus = Sparse.zeros((n, n), dtype=complex)  # initialize Y Bus Matrix
 		else:
 			y_bus = np.zeros((n, n), dtype=complex)  # initialize Y Bus Matrix
 		# The following algorithm takes the arguments: y, b_line, t, y_shunt
@@ -407,10 +407,10 @@ class PowerSystem:
 		else:
 			row, col = np.where(y)
 		if self.sparse:
-			j11 = Sparse.empty((n - 1, n - 1))
-			j12 = Sparse.empty((n - 1, pq.size))
-			j21 = Sparse.empty((pq.size, n - 1))
-			j22 = Sparse.empty((pq.size, pq.size))
+			j11 = Sparse.zeros((n - 1, n - 1))
+			j12 = Sparse.zeros((n - 1, pq.size))
+			j21 = Sparse.zeros((pq.size, n - 1))
+			j22 = Sparse.zeros((pq.size, pq.size))
 		else:
 			j11 = np.zeros((n - 1, n - 1))
 			j12 = np.zeros((n - 1, pq.size))
@@ -477,20 +477,20 @@ class PowerSystem:
 		else:
 			row, col = np.where(y)
 		if self.sparse:
-			j01 = Sparse.empty((n, n - 1))
-			j02 = Sparse.empty((n, n))
-			j11 = Sparse.empty((n, n - 1))
-			j12 = Sparse.empty((n, n))
-			j21 = Sparse.empty((n, n - 1))
-			j22 = Sparse.empty((n, n))
-			j31 = Sparse.empty((nb, n - 1))
-			j32 = Sparse.empty((nb, n))
-			j41 = Sparse.empty((nb, n - 1))
-			j42 = Sparse.empty((nb, n))
-			j51 = Sparse.empty((nb, n - 1))
-			j52 = Sparse.empty((nb, n))
-			j61 = Sparse.empty((nb, n - 1))
-			j62 = Sparse.empty((nb, n))
+			j01 = Sparse.zeros((n, n - 1))
+			j02 = Sparse.zeros((n, n))
+			j11 = Sparse.zeros((n, n - 1))
+			j12 = Sparse.zeros((n, n))
+			j21 = Sparse.zeros((n, n - 1))
+			j22 = Sparse.zeros((n, n))
+			j31 = Sparse.zeros((nb, n - 1))
+			j32 = Sparse.zeros((nb, n))
+			j41 = Sparse.zeros((nb, n - 1))
+			j42 = Sparse.zeros((nb, n))
+			j51 = Sparse.zeros((nb, n - 1))
+			j52 = Sparse.zeros((nb, n))
+			j61 = Sparse.zeros((nb, n - 1))
+			j62 = Sparse.zeros((nb, n))
 		else:
 			j01 = np.zeros((n, n - 1))
 			j02 = np.zeros((n, n))
@@ -606,7 +606,7 @@ class PowerSystem:
 		return jacobian
 
 	@staticmethod
-	def mismatch(v, d, y, pq, pvpq, psched, qsched, lam=None):
+	def mismatch(v, d, y, pq, pvpq, psched, qsched):
 		# This function was written by Nathan Gray
 		# This function calculates mismatches between the real and reactive power
 		# injections in a system vs. the scheduled injections.
@@ -619,18 +619,14 @@ class PowerSystem:
 		# pvpq: list of PV and pq buses
 		# psched, qsched: list of real, reactive power injections
 
-		if lam is None:
-			λ = 1
-		else:
-			λ = lam
 
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
 		# S = P + jQ
 		pcalc = s[pvpq].real
 		qcalc = s[pq].imag
-		dp = λ*psched - pcalc
-		dq = λ*qsched - qcalc
+		dp = psched - pcalc
+		dq = qsched - qcalc
 		mis = np.concatenate((dp, dq))
 		return mis, pcalc, qcalc
 
@@ -733,7 +729,71 @@ class PowerSystem:
 
 	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
 		# Build parameterized jacobian for continuation power flow.
-		jac = self.pf_jacobian(v, d, pq)
+		y = self.y_bus
+		n = y.shape[0]
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		p = s.real
+		q = s.imag
+
+		# Find indices of non-zero ybus entries
+		if self.sparse:
+			row = y.rows
+			col = y.cols
+		else:
+			row, col = np.where(y)
+		if self.sparse:
+			j11 = Sparse.zeros((n - 1, n - 1))
+			j12 = Sparse.zeros((n - 1, pq.size))
+			j21 = Sparse.zeros((pq.size, n - 1))
+			j22 = Sparse.zeros((pq.size, pq.size))
+		else:
+			j11 = np.zeros((n - 1, n - 1))
+			j12 = np.zeros((n - 1, pq.size))
+			j21 = np.zeros((pq.size, n - 1))
+			j22 = np.zeros((pq.size, pq.size))
+		for a in range(row.shape[0]):
+			i = row[a]
+			j = col[a]
+			# J11
+			if i != 0 and j != 0:
+				if i == j:  # Diagonals of J11
+					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
+				else:  # Off-diagonals of J11
+					j11[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+				# J21
+				if i in pq:
+					k: int = np.where(pq == i)  # map bus index to jacobian index
+					if i == j:  # Diagonals of J21
+						j21[k, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
+					else:  # Off-diagonals of J21
+						j21[k, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+				# J12
+				if j in pq:
+					l: int = np.where(pq == j)  # map bus index to jacobian index
+					if i == j:  # Diagonals of J12
+						j12[i - 1, l] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
+					else:  # Off-diagonals of J12
+						j12[i - 1, l] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
+				# J22
+				if i in pq and j in pq:
+					k: int = np.where(pq == i)  # map bus index to jacobian index
+					l: int = np.where(pq == j)  # map bus index to jacobian index
+					if i == j:  # Diagonal of J22
+						j22[k, l] = (-j11[i - 1, j - 1] - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+					else:  # Off-diagonals of J22
+						j22[k, l] = j11[i - 1, j - 1]/v[j]
+		# Assemble jacobian
+		if self.sparse:
+			jtop = Sparse.concatenate((j11, j12), axis=1)
+			jbottom = Sparse.concatenate((j21, j22), axis=1)
+			jacobian = Sparse.concatenate((jtop, jbottom), axis=0)
+		else:
+			jtop = np.concatenate((j11, j12), axis=1)
+			jbottom = np.concatenate((j21, j22), axis=1)
+			jacobian = np.concatenate((jtop, jbottom), axis=0)
+
+		jac = -jacobian
 		# add row for ek and col for psched and qsched
 		nrows = jac.shape[0]
 		ncols = jac.shape[1]
@@ -751,7 +811,7 @@ class PowerSystem:
 	def voltage_stability(self):
 		print("\n~~~~~~~~~~ Start Voltage Stability Analysis ~~~~~~~~~~\n")
 		σ = 0.1
-		λ = 0
+		λ = 1
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
 		kpq = np.r_[psched, qsched]
@@ -764,7 +824,7 @@ class PowerSystem:
 		d = self.pf_dc(d, y, pvpq, psched, lam=λ)
 		v, d, it = ps.pf_newtonraphson(v, d, prec=3, maxit=10, qlim=False, lam=λ)
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		watch_bus = 1
+		watch_bus = 3
 		results = [[σ, v[watch_bus], d[watch_bus], λ, psched[0]]]
 		phase = 1  # phase 1 -> increasing load, phase 2 -> decreasing V, phase 3 -> decreasing load
 
@@ -776,31 +836,33 @@ class PowerSystem:
 			if phase == 1:
 				kt = len(pvpq) + len(pq)
 				tk = 1
+				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 			if phase == 2:
 				kt = len(pvpq) + watch_bus - 1
 				tk = -1
+				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 			if phase == 3:
 				kt = len(pvpq) + len(pq)
 				tk = -1
-			jac = self.cpf_jacobian(v, d, pq, kpq, kt, 1)
+				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 
 			# Calculate update values
 			# ~~~~~~~~~~ Calculated Tangent Vector ~~~~~~~~~~
-			t = mat_solve(jac, np.r_[np.zeros(jac.shape[0]-1), tk])
+			t = mat_solve(jac, np.r_[np.zeros(jac.shape[0]-1), 1])
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			# ~~~~~~~~~~ Check stopping criteria ~~~~~~~~~~
-			if λ < 0.35 and phase == 2:
-				break
+			# if λ < 0.35 and phase == 2:
+			# 	break
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			# ~~~~~~~~~~ Choose Continuation Parameter For Next Step ~~~~~~~~~~
-			_kt = np.argmax(abs(t))
+			# _kt = np.argmax(abs(t))
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			# Update angles: d_(n+1) = d_n + dd
-			d_pred = d
+			d_pred = deepcopy(d)
 			d_pred[pvpq] = d[pvpq] + σ*t[:n - 1]
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
-			v_pred = v
-			v_pred[pq] = v[pq] + σ*v[pq]*t[n - 1:n + pq.size - 1]
+			v_pred = deepcopy(v)
+			v_pred[pq] = v[pq] + σ*t[n - 1:n + pq.size - 1]
 			# Update Lambda
 			λ_pred = λ + σ*t[-1]
 			# ~~~~~~~~~~ Corrector ~~~~~~~~~~
@@ -809,43 +871,63 @@ class PowerSystem:
 			v_cor = deepcopy(v_pred)
 			λ_cor = deepcopy(λ_pred)
 			it = 0
-			while it < 6:
-				mis, p_calc, q_calc = self.mismatch(v_cor, d_cor, y, pq, pvpq, (1+λ_cor)*psched, (1+λ_cor)*qsched)
+			maxit = 4
+			while it < maxit:
+				mis, p_calc, q_calc = self.mismatch(v_cor, d_cor, y, pq, pvpq, (λ_cor)*psched, (λ_cor)*qsched)
 				if phase == 1 or phase == 3:
 					mis = np.r_[mis, λ_pred - λ_cor]
 				if phase == 2:
-					mis = np.r_[mis, v_pred[watch_bus] - v_cor[watch_bus]]
+					mis = np.r_[mis, v_cor[watch_bus] - v_pred[watch_bus]]
 				# Check error
 				if max(abs(mis)) < 10**-2:
 					break  # return v, d, it
 				jac = self.cpf_jacobian(v_cor, d_cor, pq, kpq, kt, tk)
 				# Calculate update values
-				dx = mat_solve(jac, mis)
+				dx = mat_solve(jac, -mis)
 				# Update angles: d_(n+1) = d_n + dd
 				d_cor[pvpq] = d_cor[pvpq] + dx[:n - 1]
 				# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
-				v_cor[pq] = v_cor[pq] + v_cor[pq]*dx[n - 1:n + pq.size - 1]
+				v_cor[pq] = v_cor[pq] + dx[n - 1:n + pq.size - 1]
 				# Update Lambda
 				λ_cor = λ_cor + dx[-1]
 				it += 1
 
 			if phase == 1:
-				if it == 6:
+				if it >= maxit:
 					phase = 2
-					σ = 0.0025
+					σ = 0.025
+					print('phase 2')
 				else:
 					v = v_cor
 					d = d_cor
 					λ = λ_cor
+					print(round(λ, 8), v[watch_bus])
 					results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
 
 			elif phase == 2:
-				if it == 6:
+				if it >= maxit:
 					print("phase 2 not converged")
 					break
+
+
 				v = v_cor
 				d = d_cor
 				λ = λ_cor
+				print(round(λ, 8), v[watch_bus])
+				results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
+				if results[-2, 3] - results[-1, 3] > 0.4:
+					phase = 3
+					σ = 0.1
+					print('phase 3')
+
+			if phase == 3:
+				if λ < 1:
+					break
+
+				v = v_cor
+				d = d_cor
+				λ = λ_cor
+				print(round(λ, 8), v[watch_bus])
 				results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
 
 		return results
@@ -853,14 +935,14 @@ class PowerSystem:
 if __name__ == "__main__":
 	import matplotlib.pyplot as plt
 	# case_name = "IEEE14BUS.txt"
-	# case_name = "IEEE14BUS_handout.txt""
-	case_name = "2BUS.txt"
+	case_name = "IEEE14BUS_handout.txt"
+	# case_name = "2BUS.txt"
 	ps = PowerSystem(case_name, sparse=True)
 	#v0, d0 = ps.flat_start()
 	#v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10, qlim=False, lam=4)
 	results = ps.voltage_stability()
 	plt.plot(results[:, 3], results[:, 1])
-	plt.xlim((3, 4))
-	plt.ylim((0,1))
+	plt.xlim((0, 5))
+	plt.ylim((0, 1.2))
 	plt.show()
 
