@@ -824,8 +824,15 @@ class PowerSystem:
 		d = self.pf_dc(d, y, pvpq, psched, lam=λ)
 		v, d, it = ps.pf_newtonraphson(v, d, prec=3, maxit=10, qlim=False, lam=λ)
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		watch_bus = 3
-		results = [[σ, v[watch_bus], d[watch_bus], λ, psched[0]]]
+		watch_bus = 7
+		watch_index = watch_bus - 1
+		watch_pq_index = watch_index  # initialize
+		for i, bus_type in enumerate(self.bus_data[:, self.busType]):
+			if watch_index <= i:
+				break
+			if bus_type > 0 and watch_index > i:
+				watch_pq_index -= 1
+		results = [[σ, v[watch_index], d[watch_index], λ, psched[0]]]
 		phase = 1  # phase 1 -> increasing load, phase 2 -> decreasing V, phase 3 -> decreasing load
 
 		# Continuation Power Flow or Voltage Stability Analysis
@@ -838,7 +845,7 @@ class PowerSystem:
 				tk = 1
 				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 			if phase == 2:
-				kt = len(pvpq) + watch_bus - 1
+				kt = len(pvpq) + watch_pq_index
 				tk = -1
 				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 			if phase == 3:
@@ -871,15 +878,15 @@ class PowerSystem:
 			v_cor = deepcopy(v_pred)
 			λ_cor = deepcopy(λ_pred)
 			it = 0
-			maxit = 4
+			maxit = 5
 			while it < maxit:
-				mis, p_calc, q_calc = self.mismatch(v_cor, d_cor, y, pq, pvpq, (λ_cor)*psched, (λ_cor)*qsched)
+				mis, p_calc, q_calc = self.mismatch(v_cor, d_cor, y, pq, pvpq, λ_cor*psched, λ_cor*qsched)
 				if phase == 1 or phase == 3:
 					mis = np.r_[mis, λ_pred - λ_cor]
 				if phase == 2:
-					mis = np.r_[mis, v_cor[watch_bus] - v_pred[watch_bus]]
+					mis = np.r_[mis, v_cor[watch_index] - v_pred[watch_index]]
 				# Check error
-				if max(abs(mis)) < 10**-2:
+				if max(abs(mis)) < 10**-3:
 					break  # return v, d, it
 				jac = self.cpf_jacobian(v_cor, d_cor, pq, kpq, kt, tk)
 				# Calculate update values
@@ -898,11 +905,11 @@ class PowerSystem:
 					σ = 0.025
 					print('phase 2')
 				else:
-					v = v_cor
-					d = d_cor
-					λ = λ_cor
-					print(round(λ, 8), v[watch_bus])
-					results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
+					v = deepcopy(v_cor)
+					d = deepcopy(d_cor)
+					λ = deepcopy(λ_cor)
+					print(round(λ, 8), v[watch_index])
+					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[0]]]]
 
 			elif phase == 2:
 				if it >= maxit:
@@ -910,12 +917,12 @@ class PowerSystem:
 					break
 
 
-				v = v_cor
-				d = d_cor
-				λ = λ_cor
-				print(round(λ, 8), v[watch_bus])
-				results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
-				if results[-2, 3] - results[-1, 3] > 0.4:
+				v = deepcopy(v_cor)
+				d = deepcopy(d_cor)
+				λ = deepcopy(λ_cor)
+				print(round(λ, 8), v[watch_index])
+				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[0]]]]
+				if results[-2, 3] - results[-1, 3] > 0.2:
 					phase = 3
 					σ = 0.1
 					print('phase 3')
@@ -924,18 +931,18 @@ class PowerSystem:
 				if λ < 1:
 					break
 
-				v = v_cor
-				d = d_cor
-				λ = λ_cor
-				print(round(λ, 8), v[watch_bus])
-				results = np.r_[results, [[σ, v[watch_bus], d[watch_bus], λ, p_calc[0]]]]
+				v = deepcopy(v_cor)
+				d = deepcopy(d_cor)
+				λ = deepcopy(λ_cor)
+				print(round(λ, 8), v[watch_index])
+				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[0]]]]
 
 		return results
 
 if __name__ == "__main__":
 	import matplotlib.pyplot as plt
-	# case_name = "IEEE14BUS.txt"
-	case_name = "IEEE14BUS_handout.txt"
+	case_name = "IEEE14BUS.txt"
+	# case_name = "IEEE14BUS_handout.txt"
 	# case_name = "2BUS.txt"
 	ps = PowerSystem(case_name, sparse=True)
 	#v0, d0 = ps.flat_start()
