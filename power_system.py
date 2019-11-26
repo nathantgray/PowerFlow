@@ -474,65 +474,54 @@ class PowerSystem:
 		if self.sparse:
 			row = y.rows
 			col = y.cols
+			tmp = Sparse
 		else:
 			row, col = np.where(y)
-		if self.sparse:
-			j01 = Sparse.zeros((n, n - 1))
-			j02 = Sparse.zeros((n, n))
-			j11 = Sparse.zeros((n, n - 1))
-			j12 = Sparse.zeros((n, n))
-			j21 = Sparse.zeros((n, n - 1))
-			j22 = Sparse.zeros((n, n))
-			j31 = Sparse.zeros((nb, n - 1))
-			j32 = Sparse.zeros((nb, n))
-			j41 = Sparse.zeros((nb, n - 1))
-			j42 = Sparse.zeros((nb, n))
-			j51 = Sparse.zeros((nb, n - 1))
-			j52 = Sparse.zeros((nb, n))
-			j61 = Sparse.zeros((nb, n - 1))
-			j62 = Sparse.zeros((nb, n))
-		else:
-			j01 = np.zeros((n, n - 1))
-			j02 = np.zeros((n, n))
-			j11 = np.zeros((n, n - 1))
-			j12 = np.zeros((n, n))
-			j21 = np.zeros((n, n - 1))
-			j22 = np.zeros((n, n))
-			j31 = np.zeros((nb, n - 1))
-			j32 = np.zeros((nb, n))
-			j41 = np.zeros((nb, n - 1))
-			j42 = np.zeros((nb, n))
-			j51 = np.zeros((nb, n - 1))
-			j52 = np.zeros((nb, n))
-			j61 = np.zeros((nb, n - 1))
-			j62 = np.zeros((nb, n))
+			tmp = np
+
+		j01 = tmp.zeros((n, n - 1))
+		j02 = tmp.zeros((n, n))
+		j11 = tmp.zeros((n, n - 1))
+		j12 = tmp.zeros((n, n))
+		j21 = tmp.zeros((n, n - 1))
+		j22 = tmp.zeros((n, n))
+		j31 = tmp.zeros((nb, n - 1))
+		j32 = tmp.zeros((nb, n))
+		j41 = tmp.zeros((nb, n - 1))
+		j42 = tmp.zeros((nb, n))
+		j51 = tmp.zeros((nb, n - 1))
+		j52 = tmp.zeros((nb, n))
+		j61 = tmp.zeros((nb, n - 1))
+		j62 = tmp.zeros((nb, n))
+
 
 		for i in range(n):
 			j02[i, i] = 1
 		for a in range(row.shape[0]):
 			i = row[a]
 			j = col[a]
+			th_ij = np.angle(y[i, j])
 			# J11
 			if j != 0:
-				if i == j:  # Diagonals of J11
+				if i == j:  # Diagonals of J11  dPi/ddi
 					j11[i, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
-				else:  # Off-diagonals of J11
-					j11[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+				else:  # Off-diagonals of J11  dPi/ddj
+					j11[i, j - 1] = -abs(v[i]*v[j]*y[i, j])*np.sin(th_ij + d[j] - d[i])
 				# J21
-				if i == j:  # Diagonals of J21
-					j21[i, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
-				else:  # Off-diagonals of J21
-					j21[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+				if i == j:  # Diagonals of J21  dQi/ddi
+					j21[i, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
+				else:  # Off-diagonals of J21  dQi/ddj
+					j21[i, j - 1] = -abs(v[i]*v[j]*y[i, j])*np.cos(th_ij + d[j] - d[i])
 			# J12
 			if i == j:  # Diagonals of J12
 				j12[i, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
 			else:  # Off-diagonals of J12
-				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
+				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(th_ij + d[j] - d[i]))/v[j]
 			# J22
 			if i == j:  # Diagonal of J22
-				j22[i, j] = (q[i] - v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+				j22[i, j] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
 			else:  # Off-diagonals of J22
-				j22[i, j] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
+				j22[i, j] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i]))/v[j]
 
 		for b, _ in enumerate(self.branch_data[:, 0]):
 			from_bus = self.branch_data[b, 0]
@@ -558,25 +547,25 @@ class PowerSystem:
 			if j != 0:  # Do not include derivatives w.r.t. d[0]
 				# J31 dPij/dd[j]
 				j31[b, j - 1] = -v[i]*v[j]*ysinij
-				# J41 dQij/dd
+				# J41 dQij/dd[j]
 				j41[b, j - 1] = -v[i]*v[j]*ycosij
-				# J51 dPji/dd
+				# J51 dPji/dd[j]
 				j51[b, j - 1] = v[j]*v[i]*ysinji
-				# J61 dQji/dd
+				# J61 dQji/dd[j]
 				j61[b, j - 1] = v[j]*v[i]*ycosji
 
 			# J32 dPij/dV
-			j32[b, i - 1] = 2*v[i]*real(y[i, j]) + v[j]*ycosij
-			j32[b, j - 1] = v[i]*ycosij
+			j32[b, i] = -2*v[i]*real(y[i, j]) + v[j]*ycosij
+			j32[b, j] = v[i]*ycosij
 			# J42 dQij/dV
-			j42[b, i - 1] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
-			j42[b, j - 1] = -v[i]*ysinij
+			j42[b, i] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
+			j42[b, j] = -v[i]*ysinij
 			# J52 dPji/dV
-			j52[b, j - 1] = 2*v[j]*real(y[j, i]) + v[i]*ycosji
-			j52[b, i - 1] = v[j]*ycosji
+			j52[b, j] = -2*v[j]*real(y[j, i]) + v[i]*ycosji
+			j52[b, i] = v[j]*ycosji
 			# J62 dQji/dV
-			j62[b, j - 1] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
-			j62[b, i - 1] = -v[j]*ysinji
+			j62[b, j] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
+			j62[b, i] = -v[j]*ysinji
 
 		# Assemble jacobian
 		if self.sparse:
@@ -635,6 +624,21 @@ class PowerSystem:
 		s = (v * np.exp(1j * d)) * np.conj(self.y_bus.dot(v * np.exp(1j * d)))
 		return s
 
+	def pij_flow(self, d, v, i, j):
+		yij = np.abs(self.y_bus[i, j])
+		gij = np.real(self.y_bus[i, j])
+		th_ij = np.angle(self.y_bus[i, j])
+		p_ij = -v[i]**2*gij + v[i]*v[j]*yij*np.cos(th_ij + d[j] - d[i])
+		return p_ij
+
+	def qij_flow(self, d, v, i, j, b):
+		b_charging = self.branch_data[b, self.branchB]
+		yij = np.abs(self.y_bus[i, j])
+		bij = np.imag(self.y_bus[i, j])
+		th_ij = np.angle(self.y_bus[i, j])
+		q_ij = -v[i]**2*(b_charging/2 - bij) - v[i]*v[j]*yij*np.sin(th_ij + d[j] - d[i])
+		return q_ij
+
 	def branch_flows(self, v, d):
 		p_ij = np.zeros(self.branch_data[:, 0].shape)
 		p_ji = np.zeros(self.branch_data[:, 0].shape)
@@ -646,18 +650,11 @@ class PowerSystem:
 			to_bus = self.branch_data[b, 1]
 			i = int(from_bus - 1)
 			j = int(to_bus - 1)
-			gij = np.real(self.y_bus[i, j])
-			bij = np.imag(self.y_bus[i, j])
-			yij = np.abs(self.y_bus[i, j])
-			th_ij = np.angle(self.y_bus[i, j])
-			p_ij[b] = round(-v[i]**2*gij + v[i]*v[j]*yij*np.cos(th_ij + d[j] - d[i]), 14)
-			q_ij[b] = round(-v[i]**2*(b_charging[b]/2 - bij) - v[i]*v[j]*yij*np.sin(th_ij + d[j] - d[i]), 14)
-			gji = np.real(self.y_bus[j, i])
-			bji = np.imag(self.y_bus[j, i])
-			yji = np.abs(self.y_bus[j, i])
-			th_ji = np.angle(self.y_bus[j, i])
-			p_ji[b] = round(-v[j]**2*gji + v[j]*v[i]*yji*np.cos(th_ji + d[i] - d[j]), 14)
-			q_ji[b] = round(-v[j]**2*(b_charging[b]/2 - bji) - v[j]*v[i]*yji*np.sin(th_ji + d[i] - d[j]), 14)
+			p_ij[b] = self.pij_flow(d, v, i, j)
+			q_ij[b] = self.qij_flow(d, v, i, j, b)
+
+			p_ji[b] = self.pij_flow(d, v, j, i)
+			q_ji[b] = self.qij_flow(d, v, j, i, b)
 		return p_ij, q_ij, p_ji, q_ji
 
 	def flat_start(self):
