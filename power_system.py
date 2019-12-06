@@ -926,7 +926,7 @@ class PowerSystem:
 	def voltage_stability(self):
 		print("\n~~~~~~~~~~ Start Voltage Stability Analysis ~~~~~~~~~~\n")
 		σ = 0.1
-		λ = 1
+		λ = 0
 		psched = self.psched
 		qsched = deepcopy(self.qsched)
 		kpq = np.r_[psched, qsched]
@@ -953,20 +953,21 @@ class PowerSystem:
 		# Continuation Power Flow or Voltage Stability Analysis
 		while True:
 
-
+			kpq_jon = np.zeros(kpq.shape)
+			kpq_jon[watch_index-1] = -1
 			# Calculate Jacobian
 			if phase == 1:
 				kt = len(pvpq) + len(pq)
 				tk = 1
-				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
+				jac = self.cpf_jacobian(v, d, pq, kpq_jon, kt, tk)
 			if phase == 2:
 				kt = len(pvpq) + watch_pq_index
 				tk = -1
-				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
+				jac = self.cpf_jacobian(v, d, pq, kpq_jon, kt, tk)
 			if phase == 3:
 				kt = len(pvpq) + len(pq)
 				tk = -1
-				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
+				jac = self.cpf_jacobian(v, d, pq, kpq_jon, kt, tk)
 
 			# Calculate update values
 			# ~~~~~~~~~~ Calculated Tangent Vector ~~~~~~~~~~
@@ -1063,7 +1064,7 @@ if __name__ == "__main__":
 	#v0, d0 = ps.flat_start()
 	#v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10, qlim=False, lam=4)
 	results = ps.voltage_stability()
-	plt.plot(results[:, 3], results[:, 1])
+	plt.plot(results[:, 4], results[:, 1])
 	plt.xlim((0, 5))
 	plt.ylim((0, 1.2))
 	plt.show()
