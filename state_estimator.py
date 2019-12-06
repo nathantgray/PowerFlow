@@ -1,27 +1,11 @@
 import numpy as np
 from scipy.stats.distributions import chi2
 from copy import deepcopy
-def h_calc(ps, v, d):
-	v = np.transpose(v)[0]
-	d = np.transpose(d)[0]
-	s = (v*np.exp(1j *d))*np.conj(ps.y_bus.dot(v*np.exp(1j*d)))
-	p = np.real(s)
-	q = np.imag(s)
-	pij, qij, pji, qji = ps.branch_flows(v, d)
-	return np.r_[
-		np.transpose([v]),
-		np.transpose([p]),
-		np.transpose([q]),
-		np.transpose([pij]),
-		np.transpose([qij]),
-		np.transpose([pji]),
-		np.transpose([qji])
-	]
+from power_system import PowerSystem
+from numpy.linalg import inv
 
 
 if __name__ == "__main__":
-	from power_system import PowerSystem
-	from numpy.linalg import inv
 	case_name = "IEEE14BUS.txt"
 	# case_name = "IEEE14BUS_handout.txt"
 	# case_name = "2BUS.txt"
@@ -108,7 +92,7 @@ if __name__ == "__main__":
 		for it in range(40):
 			h = ps.se_h_matrix(v_est.T[0], d_est.T[0])
 			h = np.delete(h, bad_data_mapped, 0)
-			dz = z - h_calc(ps, v_est, d_est)
+			dz = z - ps.h_calc(v_est, d_est)
 			dz = np.delete(dz, bad_data_mapped, 0)
 			gain = h.T @ w @ h
 			dx = inv(gain) @ h.T @ w @ dz

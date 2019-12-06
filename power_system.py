@@ -228,6 +228,23 @@ class PowerSystem:
 
 		return y_bus
 
+	# ~~~~~ Power Flows ~~~~~
+	def flat_start(self):
+		# Initialize with flat start
+		v_flat = np.array(
+			np.where(self.bus_data[:, self.busDesiredVolts] == 0.0, 1, self.bus_data[:, self.busDesiredVolts]))
+		d_flat = np.zeros(v_flat.shape)
+		return v_flat, d_flat
+
+	@staticmethod
+	def pf_dc(d, y, pvpq, psched, lam=None):
+		bdc = -y.imag[pvpq, :][:, pvpq]
+		if lam is not None:
+			d[pvpq] = mat_solve(bdc, lam*psched)
+		else:
+			d[pvpq] = mat_solve(bdc, psched)
+		return d
+
 	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None):
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
@@ -237,7 +254,7 @@ class PowerSystem:
 		# prec: program finishes when all mismatches < 10^-abs(prec)
 		# maxit: maximum number of iterations
 		print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
-		psched = self.psched
+		psched = deepcopy(self.psched)
 		qsched = deepcopy(self.qsched)
 		if lam is not None:
 			psched = lam*psched
@@ -461,6 +478,7 @@ class PowerSystem:
 		else:
 			return jacobian
 
+	# ~~~~~ State Estimation ~~~~~
 	def se_h_matrix(self, v, d):
 		y = self.y_bus
 		n = y.shape[0]
@@ -594,6 +612,23 @@ class PowerSystem:
 
 		return jacobian
 
+	def h_calc(self, v, d):
+		v = np.transpose(v)[0]
+		d = np.transpose(d)[0]
+		s = (v * np.exp(1j * d)) * np.conj(self.y_bus.dot(v * np.exp(1j * d)))
+		p = np.real(s)
+		q = np.imag(s)
+		pij, qij, pji, qji = self.branch_flows(v, d)
+		return np.r_[
+			np.transpose([v]),
+			np.transpose([p]),
+			np.transpose([q]),
+			np.transpose([pij]),
+			np.transpose([qij]),
+			np.transpose([pji]),
+			np.transpose([qji])
+		]
+
 	@staticmethod
 	def mismatch(v, d, y, pq, pvpq, psched, qsched):
 		# This function was written by Nathan Gray
@@ -657,73 +692,7 @@ class PowerSystem:
 			q_ji[b] = self.qij_flow(d, v, j, i, b)
 		return p_ij, q_ij, p_ji, q_ji
 
-	def flat_start(self):
-		# Initialize with flat start
-		v_flat = np.array(
-			np.where(self.bus_data[:, self.busDesiredVolts] == 0.0, 1, self.bus_data[:, self.busDesiredVolts]))
-		d_flat = np.zeros(v_flat.shape)
-		return v_flat, d_flat
-
-	@staticmethod
-	def pf_dc(d, y, pvpq, psched, lam=None):
-		bdc = -y.imag[pvpq, :][:, pvpq]
-		if lam is not None:
-			d[pvpq] = mat_solve(bdc, lam*psched)
-		else:
-			d[pvpq] = mat_solve(bdc, psched)
-		return d
-
-	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None):
-		# Uses Newton-Raphson method to solve the power-flow of a power system.
-		# Written by Nathan Gray
-		# Arguments:
-		# v_start: list of voltage magnitudes in system
-		# d_start: list of voltage phase angles in system
-		# prec: program finishes when all mismatches < 10^-abs(prec)
-		# maxit: maximum number of iterations
-		print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
-		psched = deepcopy(self.psched)
-		qsched = deepcopy(self.qsched)
-		if lam is not None:
-			psched = psched*(1 + lam)
-			qsched = qsched*(1 + lam)
-		v = deepcopy(v_start)
-		d = deepcopy(d_start)
-		y = self.y_bus
-		pvpq = self.pvpq
-		pq = deepcopy(self.pq)
-		pv = deepcopy(self.pv)
-		pq_last = deepcopy(pq)
-		n = np.shape(y)[0]
-		i = 0
-		# Newton Raphson
-		for i in range(maxit+1):
-			# Calculate Mismatches
-			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
-			print("error: ", max(abs(mis)))
-			pq_last = deepcopy(pq)
-			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
-			# Check Limits
-				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
-				# Calculate Mismatches
-				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
-			# Check error
-			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
-				print("Newton Raphson completed in ", i, " iterations.")
-				# pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
-				return v, d, i
-			# Calculate Jacobian
-			j = self.pf_jacobian(v, d, pq)
-			# Calculate update values
-			dx = mat_solve(j, mis)
-			# Update angles: d_(n+1) = d_n + dd
-			d[pvpq] = d[pvpq] + dx[:n - 1]
-			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
-			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
-			# print(v, d)
-		print("Max iterations reached, ", i, ".")
-		return v, d, i
-
+	# ~~~~~ Continuation Power flow aka Voltage Stability Analyis ~~~~~
 	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
 		# Build parameterized jacobian for continuation power flow.
 		y = self.y_bus
@@ -821,7 +790,7 @@ class PowerSystem:
 		d = self.pf_dc(d, y, pvpq, psched, lam=λ)
 		v, d, it = ps.pf_newtonraphson(v, d, prec=3, maxit=10, qlim=False, lam=λ)
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		watch_bus = 7
+		watch_bus = 4
 		watch_index = watch_bus - 1
 		watch_pq_index = watch_index  # initialize
 		for i, bus_type in enumerate(self.bus_data[:, self.busType]):
@@ -938,8 +907,8 @@ class PowerSystem:
 
 if __name__ == "__main__":
 	import matplotlib.pyplot as plt
-	case_name = "IEEE14BUS.txt"
-	# case_name = "IEEE14BUS_handout.txt"
+	# case_name = "IEEE14BUS.txt"
+	case_name = "IEEE14BUS_handout.txt"
 	# case_name = "2BUS.txt"
 	ps = PowerSystem(case_name, sparse=True)
 	#v0, d0 = ps.flat_start()
