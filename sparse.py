@@ -352,6 +352,7 @@ class Sparse:
 		for k, value in enumerate(self.values):
 			full_array[int(self.rows[k]), int(self.cols[k])] = value
 		return full_array
+	full = property(full)
 
 	def dot(self, vector):
 		if len(vector) != self.shape[1]:

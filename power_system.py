@@ -245,7 +245,7 @@ class PowerSystem:
 			d[pvpq] = mat_solve(bdc, psched)
 		return d
 
-	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None):
+	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None, verbose=True):
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -253,7 +253,8 @@ class PowerSystem:
 		# d_start: list of voltage phase angles in system
 		# prec: program finishes when all mismatches < 10^-abs(prec)
 		# maxit: maximum number of iterations
-		print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
+		if verbose:
+			print("\n~~~~~~~~~~ Start Newton-Raphson Method ~~~~~~~~~~\n")
 		psched = deepcopy(self.psched)
 		qsched = deepcopy(self.qsched)
 		if lam is not None:
@@ -272,7 +273,8 @@ class PowerSystem:
 		for i in range(maxit+1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
-			print("error: ", max(abs(mis)))
+			if verbose:
+				print("error: ", max(abs(mis)))
 			pq_last = deepcopy(pq)
 			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
 			# Check Limits
@@ -281,7 +283,8 @@ class PowerSystem:
 				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			# Check error
 			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
-				print("Newton Raphson completed in ", i, " iterations.")
+				if verbose:
+					print("Newton Raphson completed in ", i, " iterations.")
 				# pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 				return v, d, i
 			# Calculate Jacobian
@@ -293,7 +296,8 @@ class PowerSystem:
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
 			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
 			# print(v, d)
-		print("Max iterations reached, ", i, ".")
+		if verbose:
+			print("Max iterations reached, ", i, ".")
 		return v, d, i
 
 	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100, qlim=True, qlim_prec=2):
@@ -477,6 +481,70 @@ class PowerSystem:
 			return j11, j22
 		else:
 			return jacobian
+
+	def jacobian_full(self, v, d):
+		# This function was written by Nathan Gray using formulas from chapter 9 of
+		# "Power Systems Analysis" J. Grainger et al.
+		# Calculates the Jacobian Matrix for use in the Newton-Raphson Method.
+		# Arguments:
+		# v: Voltage magnitudes
+		# d: Voltage phase angles
+		y = self.y_bus
+		n = y.shape[0]
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		p = s.real
+		q = s.imag
+
+		# Find indices of non-zero ybus entries
+		if self.sparse:
+			tmp = Sparse
+		else:
+			tmp = np
+		row, col = tmp.where(y)
+
+		j11 = tmp.zeros((n - 1, n - 1))
+		j12 = tmp.zeros((n - 1, n))
+		j21 = tmp.zeros((n, n - 1))
+		j22 = tmp.zeros((n, n))
+
+		for a in range(row.shape[0]):
+			i = row[a]
+			j = col[a]
+			th_ij = np.angle(y[i, j])
+			s_ij = np.sin(th_ij + d[j] - d[i])
+			c_ij = np.cos(th_ij + d[j] - d[i])
+			y_ij = abs(y[i, j])
+			if i != 0 and j != 0:
+				# J11
+				if i == j:  # Diagonals of J11  dPi/ddi
+					j11[i - 1, j - 1] = - q[i] - v[i]**2*y[i, i].imag
+				else:  # Off-diagonals of J11  dPi/ddj
+					j11[i, j - 1] = -v[i]*v[j]*y_ij*s_ij
+			if j != 0:
+				# J21
+				if i == j:  # Diagonals of J21  dQi/ddi
+					j21[i, j - 1] = p[i] - v[i]**2*y[i, j].real
+				else:  # Off-diagonals of J21  dQi/ddj
+					j21[i, j - 1] = -v[i]*v[j]*y_ij*c_ij
+			if i != 0:
+				# J12
+				if i == j:  # Diagonals of J12
+					j12[i - 1, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
+				else:  # Off-diagonals of J12
+					j12[i - 1, j] = (v[j]*v[i]*y_ij*c_ij)/v[j]
+			# J22
+			if i == j:  # Diagonal of J22
+				j22[i, j] = (q[i] + v[i]**2*y[i, i].imag - 2*v[i]**2*y[i, j].imag)/v[i]
+			else:  # Off-diagonals of J22
+				j22[i, j] = (-v[i]*v[j]*y_ij*s_ij)/v[j]
+
+		# Assemble jacobian
+		jtop = tmp.concatenate((j11, j12), axis=1)
+		jbottom = tmp.concatenate((j21, j22), axis=1)
+		jacobian = tmp.concatenate((jtop, jbottom), axis=0)
+
+		return jacobian
 
 	# ~~~~~ State Estimation ~~~~~
 	def se_h_matrix(self, v, d):
@@ -691,6 +759,87 @@ class PowerSystem:
 			p_ji[b] = self.pij_flow(d, v, j, i)
 			q_ji[b] = self.qij_flow(d, v, j, i, b)
 		return p_ij, q_ij, p_ji, q_ji
+
+	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
+		# Build parameterized jacobian for continuation power flow.
+		y = self.y_bus
+		n = y.shape[0]
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		p = s.real
+		q = s.imag
+
+		# Find indices of non-zero ybus entries
+		if self.sparse:
+			row = y.rows
+			col = y.cols
+		else:
+			row, col = np.where(y)
+		if self.sparse:
+			j11 = Sparse.zeros((n - 1, n - 1))
+			j12 = Sparse.zeros((n - 1, pq.size))
+			j21 = Sparse.zeros((pq.size, n - 1))
+			j22 = Sparse.zeros((pq.size, pq.size))
+		else:
+			j11 = np.zeros((n - 1, n - 1))
+			j12 = np.zeros((n - 1, pq.size))
+			j21 = np.zeros((pq.size, n - 1))
+			j22 = np.zeros((pq.size, pq.size))
+		for a in range(row.shape[0]):
+			i = row[a]
+			j = col[a]
+			# J11
+			if i != 0 and j != 0:
+				if i == j:  # Diagonals of J11
+					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
+				else:  # Off-diagonals of J11
+					j11[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+				# J21
+				if i in pq:
+					k: int = np.where(pq == i)  # map bus index to jacobian index
+					if i == j:  # Diagonals of J21
+						j21[k, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
+					else:  # Off-diagonals of J21
+						j21[k, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+				# J12
+				if j in pq:
+					l: int = np.where(pq == j)  # map bus index to jacobian index
+					if i == j:  # Diagonals of J12
+						j12[i - 1, l] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
+					else:  # Off-diagonals of J12
+						j12[i - 1, l] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
+				# J22
+				if i in pq and j in pq:
+					k: int = np.where(pq == i)  # map bus index to jacobian index
+					l: int = np.where(pq == j)  # map bus index to jacobian index
+					if i == j:  # Diagonal of J22
+						j22[k, l] = (-j11[i - 1, j - 1] - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+					else:  # Off-diagonals of J22
+						j22[k, l] = j11[i - 1, j - 1]/v[j]
+		# Assemble jacobian
+		if self.sparse:
+			jtop = Sparse.concatenate((j11, j12), axis=1)
+			jbottom = Sparse.concatenate((j21, j22), axis=1)
+			jacobian = Sparse.concatenate((jtop, jbottom), axis=0)
+		else:
+			jtop = np.concatenate((j11, j12), axis=1)
+			jbottom = np.concatenate((j21, j22), axis=1)
+			jacobian = np.concatenate((jtop, jbottom), axis=0)
+
+		jac = -jacobian
+		# add row for ek and col for psched and qsched
+		nrows = jac.shape[0]
+		ncols = jac.shape[1]
+		if self.sparse:
+			for row in range(nrows):
+				jac[row, ncols] = kpq[row]
+			jac[nrows, kt] = sign
+		else:
+			ek = np.zeros((1, ncols))
+			ek[kt] = sign
+			jac = np.c_[jac, kpq]
+			jac = np.r_[jac, ek]
+		return jac
 
 	# ~~~~~ Continuation Power flow aka Voltage Stability Analyis ~~~~~
 	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
