@@ -24,12 +24,12 @@ if __name__ == "__main__":
 	a2 = np.array([[0.004], [0.0048]])
 	mat = np.r_[np.c_[(np.eye(2) * 2*a2), np.array([[-1],[-1]])],np.array([[1, 1, 0]])]
 	lossless_ED = mat_solve(mat, np.r_[-a1,[[P_total]]])
-	print(soln)
+	print(lossless_ED)
 
 	# 2. From base case PF, used P_total = P1 + P2
-	pg2 = soln[1]
+	pg2 = lossless_ED[1]
 	dgdx = ps.jacobian_full(v, d)
-	n = j.shape[1]
-	dfdx = (2 * a2[1] * pg2 + a1[1]) * (np.array([j.full[1, :]]))
+	n = dgdx.shape[1]
+	dfdx = (2 * a2[1] * pg2 + a1[1]) * (np.array([dgdx.full[1, :]]))
 	print(dfdx)
-	j.full.T ** -1 @ dfdx.T
+	print(dgdx.full.T ** -1 @ dfdx)

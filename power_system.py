@@ -52,13 +52,13 @@ class PowerSystem:
 		self.mw_load = self.bus_data[self.pvpq, self.busLoadMW]
 		self.mvar_load = self.bus_data[self.pq, self.busLoadMVAR]
 		self.mvar_load_full = self.bus_data[:, self.busLoadMVAR]
-		self.q_load_full = self.mvar_load_full/self.p_base
-		self.psched = np.array(self.mw_gen - self.mw_load)/self.p_base
-		self.qsched = np.array(- self.mvar_load)/self.p_base
-		self.qsched_full = np.array(- self.mvar_load_full)/self.p_base
+		self.q_load_full = self.mvar_load_full / self.p_base
+		self.psched = np.array(self.mw_gen - self.mw_load) / self.p_base
+		self.qsched = np.array(- self.mvar_load) / self.p_base
+		self.qsched_full = np.array(- self.mvar_load_full) / self.p_base
 		self.q_lim = np.c_[
-			self.bus_data[:, self.busMaxMVAR]/self.p_base,
-			self.bus_data[:, self.busMinMVAR]/self.p_base]
+			self.bus_data[:, self.busMaxMVAR] / self.p_base,
+			self.bus_data[:, self.busMinMVAR] / self.p_base]
 		self.q_min_bus = np.array([]).astype(int)
 		self.q_max_bus = np.array([]).astype(int)
 
@@ -225,7 +225,6 @@ class PowerSystem:
 			for i in range(n):
 				y_bus[i, i] += y_shunt[i]
 
-
 		return y_bus
 
 	# ~~~~~ Power Flows ~~~~~
@@ -240,7 +239,7 @@ class PowerSystem:
 	def pf_dc(d, y, pvpq, psched, lam=None):
 		bdc = -y.imag[pvpq, :][:, pvpq]
 		if lam is not None:
-			d[pvpq] = mat_solve(bdc, lam*psched)
+			d[pvpq] = mat_solve(bdc, lam * psched)
 		else:
 			d[pvpq] = mat_solve(bdc, psched)
 		return d
@@ -258,8 +257,8 @@ class PowerSystem:
 		psched = deepcopy(self.psched)
 		qsched = deepcopy(self.qsched)
 		if lam is not None:
-			psched = lam*psched
-			qsched = lam*qsched
+			psched = lam * psched
+			qsched = lam * qsched
 		v = deepcopy(v_start)
 		d = deepcopy(d_start)
 		y = self.y_bus
@@ -270,19 +269,19 @@ class PowerSystem:
 		n = np.shape(y)[0]
 		i = 0
 		# Newton Raphson
-		for i in range(maxit+1):
+		for i in range(maxit + 1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			if verbose:
 				print("error: ", max(abs(mis)))
 			pq_last = deepcopy(pq)
-			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):
-			# Check Limits
+			if qlim and max(abs(mis)) < 10 ** -abs(qlim_prec):
+				# Check Limits
 				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 				# Calculate Mismatches
 				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			# Check error
-			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
+			if max(abs(mis)) < 10 ** -abs(prec) and np.array_equiv(pq_last, pq):
 				if verbose:
 					print("Newton Raphson completed in ", i, " iterations.")
 				# pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
@@ -294,8 +293,8 @@ class PowerSystem:
 			# Update angles: d_(n+1) = d_n + dd
 			d[pvpq] = d[pvpq] + dx[:n - 1]
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
-			v[pq] = v[pq]*(1+dx[n-1:n+pq.size-1])
-			# print(v, d)
+			v[pq] = v[pq] * (1 + dx[n - 1:n + pq.size - 1])
+		# print(v, d)
 		if verbose:
 			print("Max iterations reached, ", i, ".")
 		return v, d, i
@@ -326,12 +325,12 @@ class PowerSystem:
 		# bd = self.pf_jacobian(v, d, pq, decoupled=True)[0]
 		# bv = self.pf_jacobian(v, d, pq, decoupled=True)[1]
 		i = 0
-		for i in range(maxit+1):
+		for i in range(maxit + 1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			print("error: ", max(abs(mis)))
 			pq_last = deepcopy(pq)
-			if qlim and max(abs(mis)) < 10**-abs(qlim_prec):  # Do q-limit check
+			if qlim and max(abs(mis)) < 10 ** -abs(qlim_prec):  # Do q-limit check
 				pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
 				# Calculate Mismatches
 				mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
@@ -339,7 +338,7 @@ class PowerSystem:
 			if not np.array_equiv(pq_last, pq):
 				bv = -bpp.imag[pq, :][:, pq]
 			# Check error
-			if max(abs(mis)) < 10**-abs(prec) and np.array_equiv(pq_last, pq):
+			if max(abs(mis)) < 10 ** -abs(prec) and np.array_equiv(pq_last, pq):
 				print("Decoupled Power Flow completed in ", i, " iterations.")
 				return v, d, i
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
@@ -361,7 +360,8 @@ class PowerSystem:
 						pq = np.setdiff1d(pq, [bus])
 						pv = np.unique(np.concatenate((pv, [bus])))
 						self.q_max_bus = np.delete(self.q_max_bus, np.where(self.q_max_bus == bus))
-						print("Not Q Limited: ", bus, " because ", v[bus], " > ", self.bus_data[bus, self.busDesiredVolts])
+						print("Not Q Limited: ", bus, " because ", v[bus], " > ",
+							  self.bus_data[bus, self.busDesiredVolts])
 			if len(self.q_min_bus) > 0:
 				for bus in self.q_min_bus:
 					if v[bus] < self.bus_data[bus, self.busDesiredVolts]:
@@ -369,7 +369,8 @@ class PowerSystem:
 						pq = np.setdiff1d(pq, [bus])
 						pv = np.sort(np.concatenate((pv, [bus])))
 						self.q_min_bus = np.delete(self.q_min_bus, np.where(self.q_min_bus == bus))
-						print("Not Q Limited: ", bus, " because ", v[bus], " < ", self.bus_data[bus, self.busDesiredVolts])
+						print("Not Q Limited: ", bus, " because ", v[bus], " < ",
+							  self.bus_data[bus, self.busDesiredVolts])
 
 		# Find buses that need to be limited.
 		s_full = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
@@ -378,8 +379,10 @@ class PowerSystem:
 		q_min_limits = np.array([min(lim) for lim in q_lim])
 		q_max_limits = np.array([max(lim) for lim in q_lim])
 		# Keep record of all buses that are limited or have been limited.
-		max_index_for_pv_buses = np.where(np.array([max(lim) <= q_generated_full[i] for i, lim in enumerate(q_lim)])[pv])[0]
-		min_index_for_pv_buses = np.where(np.array([min(lim) >= q_generated_full[i] for i, lim in enumerate(q_lim)])[pv])[0]
+		max_index_for_pv_buses = \
+			np.where(np.array([max(lim) <= q_generated_full[i] for i, lim in enumerate(q_lim)])[pv])[0]
+		min_index_for_pv_buses = \
+			np.where(np.array([min(lim) >= q_generated_full[i] for i, lim in enumerate(q_lim)])[pv])[0]
 		new_q_max_buses = np.array(pv[max_index_for_pv_buses])
 		new_q_min_buses = np.array(pv[min_index_for_pv_buses])
 		self.q_max_bus = np.unique(np.r_[self.q_max_bus, new_q_max_buses])
@@ -417,66 +420,62 @@ class PowerSystem:
 		y = self.y_bus
 		n = y.shape[0]
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
-		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		s = (v*np.exp(1j*d))*np.conj(y.dot(v*np.exp(1j*d)))
 		p = s.real
 		q = s.imag
 
+		if self.sparse:
+			tmp = Sparse
+		else:
+			tmp = np
+
 		# Find indices of non-zero ybus entries
-		if self.sparse:
-			row = y.rows
-			col = y.cols
-		else:
-			row, col = np.where(y)
-		if self.sparse:
-			j11 = Sparse.zeros((n - 1, n - 1))
-			j12 = Sparse.zeros((n - 1, pq.size))
-			j21 = Sparse.zeros((pq.size, n - 1))
-			j22 = Sparse.zeros((pq.size, pq.size))
-		else:
-			j11 = np.zeros((n - 1, n - 1))
-			j12 = np.zeros((n - 1, pq.size))
-			j21 = np.zeros((pq.size, n - 1))
-			j22 = np.zeros((pq.size, pq.size))
+		row, col = tmp.where(y)
+
+		j11 = tmp.zeros((n - 1, n - 1))
+		j12 = tmp.zeros((n - 1, pq.size))
+		j21 = tmp.zeros((pq.size, n - 1))
+		j22 = tmp.zeros((pq.size, pq.size))
+
 		for a in range(row.shape[0]):
 			i = row[a]
 			j = col[a]
 			# J11
 			if i != 0 and j != 0:
+				th_ij = np.angle(y[i, j])
+				s_ij = np.sin(th_ij + d[j] - d[i])
+				c_ij = np.cos(th_ij + d[j] - d[i])
+				y_ij = abs(y[i, j])
 				if i == j:  # Diagonals of J11
-					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
+					j11[i - 1, j - 1] = - q[i] - v[i]**2*y[i, i].imag
 				else:  # Off-diagonals of J11
-					j11[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+					j11[i - 1, j - 1] = -v[i]*v[j]*y_ij*s_ij
 				# J21
 				if i in pq:
-					k: int = np.where(pq == i)  # map bus index to jacobian index
+					k: int = np.ravel(np.where(pq == i))[0]  # map bus index to jacobian index
 					if i == j:  # Diagonals of J21
-						j21[k, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
+						j21[k, j - 1] = p[i] - abs(v[i])**2*y[i, j].real
 					else:  # Off-diagonals of J21
-						j21[k, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+						j21[k, j - 1] = -v[i]*v[j]*y_ij*c_ij
 				# J12
 				if j in pq:
-					l: int = np.where(pq == j)  # map bus index to jacobian index
+					l: int = np.ravel(np.where(pq == j))[0]  # map bus index to jacobian index
 					if i == j:  # Diagonals of J12
-						j12[i - 1, l] = p[i] + abs(v[i] ** 2 * y[i, j].real)
+						j12[i - 1, l] = p[i] + v[i]**2*y[i, j].real
 					else:  # Off-diagonals of J12
-						j12[i - 1, l] = abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+						j12[i - 1, l] = v[i]*v[j]*y_ij*c_ij
 				# J22
 				if i in pq and j in pq:
-					k: int = np.where(pq == i)  # map bus index to jacobian index
-					l: int = np.where(pq == j)  # map bus index to jacobian index
+					k: int = np.ravel(np.where(pq == i))[0]  # map bus index to jacobian index
+					l: int = np.ravel(np.where(pq == j))[0]  # map bus index to jacobian index
 					if i == j:  # Diagonal of J22
-						j22[k, l] = -j11[i - 1, j - 1] - 2 * abs(v[i]) ** 2 * y[i, j].imag
+						j22[k, l] = -j11[i - 1, j - 1] - 2*v[i]**2*y[i, j].imag
 					else:  # Off-diagonals of J22
 						j22[k, l] = j11[i - 1, j - 1]
 		# Assemble jacobian
-		if self.sparse:
-			jtop = Sparse.concatenate((j11, j12), axis=1)
-			jbottom = Sparse.concatenate((j21, j22), axis=1)
-			jacobian = Sparse.concatenate((jtop, jbottom), axis=0)
-		else:
-			jtop = np.concatenate((j11, j12), axis=1)
-			jbottom = np.concatenate((j21, j22), axis=1)
-			jacobian = np.concatenate((jtop, jbottom), axis=0)
+		jtop = tmp.concatenate((j11, j12), axis=1)
+		jbottom = tmp.concatenate((j21, j22), axis=1)
+		jacobian = tmp.concatenate((jtop, jbottom), axis=0)
 		if decoupled:
 			return j11, j22
 		else:
@@ -518,26 +517,26 @@ class PowerSystem:
 			if i != 0 and j != 0:
 				# J11
 				if i == j:  # Diagonals of J11  dPi/ddi
-					j11[i - 1, j - 1] = - q[i] - v[i]**2*y[i, i].imag
+					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
 				else:  # Off-diagonals of J11  dPi/ddj
-					j11[i, j - 1] = -v[i]*v[j]*y_ij*s_ij
+					j11[i - 1, j - 1] = -v[i] * v[j] * y_ij * s_ij
 			if j != 0:
 				# J21
 				if i == j:  # Diagonals of J21  dQi/ddi
-					j21[i, j - 1] = p[i] - v[i]**2*y[i, j].real
+					j21[i, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
 				else:  # Off-diagonals of J21  dQi/ddj
-					j21[i, j - 1] = -v[i]*v[j]*y_ij*c_ij
+					j21[i, j - 1] = -v[i] * v[j] * y_ij * c_ij
 			if i != 0:
 				# J12
 				if i == j:  # Diagonals of J12
 					j12[i - 1, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
 				else:  # Off-diagonals of J12
-					j12[i - 1, j] = (v[j]*v[i]*y_ij*c_ij)/v[j]
+					j12[i - 1, j] = (v[j] * v[i] * y_ij * c_ij) / v[j]
 			# J22
 			if i == j:  # Diagonal of J22
-				j22[i, j] = (q[i] + v[i]**2*y[i, i].imag - 2*v[i]**2*y[i, j].imag)/v[i]
+				j22[i, j] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * v[i] ** 2 * y[i, j].imag) / v[i]
 			else:  # Off-diagonals of J22
-				j22[i, j] = (-v[i]*v[j]*y_ij*s_ij)/v[j]
+				j22[i, j] = (-v[i] * v[j] * y_ij * s_ij) / v[j]
 
 		# Assemble jacobian
 		jtop = tmp.concatenate((j11, j12), axis=1)
@@ -580,7 +579,6 @@ class PowerSystem:
 		j61 = tmp.zeros((nb, n - 1))
 		j62 = tmp.zeros((nb, n))
 
-
 		for i in range(n):
 			j02[i, i] = 1
 		for a in range(row.shape[0]):
@@ -592,22 +590,22 @@ class PowerSystem:
 				if i == j:  # Diagonals of J11  dPi/ddi
 					j11[i, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
 				else:  # Off-diagonals of J11  dPi/ddj
-					j11[i, j - 1] = -abs(v[i]*v[j]*y[i, j])*np.sin(th_ij + d[j] - d[i])
+					j11[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i])
 				# J21
 				if i == j:  # Diagonals of J21  dQi/ddi
 					j21[i, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
 				else:  # Off-diagonals of J21  dQi/ddj
-					j21[i, j - 1] = -abs(v[i]*v[j]*y[i, j])*np.cos(th_ij + d[j] - d[i])
+					j21[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(th_ij + d[j] - d[i])
 			# J12
 			if i == j:  # Diagonals of J12
-				j12[i, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
+				j12[i, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
 			else:  # Off-diagonals of J12
-				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(th_ij + d[j] - d[i]))/v[j]
+				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(th_ij + d[j] - d[i])) / v[j]
 			# J22
 			if i == j:  # Diagonal of J22
-				j22[i, j] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+				j22[i, j] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag) / v[i]
 			else:  # Off-diagonals of J22
-				j22[i, j] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i]))/v[j]
+				j22[i, j] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i])) / v[j]
 
 		for b, _ in enumerate(self.branch_data[:, 0]):
 			from_bus = self.branch_data[b, 0]
@@ -615,43 +613,43 @@ class PowerSystem:
 			i = int(from_bus - 1)
 			j = int(to_bus - 1)
 			b_chrg = self.branch_data[b, self.branchB]
-			ycosij = abs(y[i, j])*cos(angle(y[i, j]) + d[j] - d[i])
-			ycosji = abs(y[j, i])*cos(angle(y[j, i]) + d[i] - d[j])
-			ysinij = abs(y[i, j])*sin(angle(y[i, j]) + d[j] - d[i])
-			ysinji = abs(y[j, i])*sin(angle(y[j, i]) + d[i] - d[j])
+			ycosij = abs(y[i, j]) * cos(angle(y[i, j]) + d[j] - d[i])
+			ycosji = abs(y[j, i]) * cos(angle(y[j, i]) + d[i] - d[j])
+			ysinij = abs(y[i, j]) * sin(angle(y[i, j]) + d[j] - d[i])
+			ysinji = abs(y[j, i]) * sin(angle(y[j, i]) + d[i] - d[j])
 
 			if i != 0:  # Do not include derivatives w.r.t. d[0]
 				# J31 dPij/dd[i]
-				j31[b, i - 1] = v[i]*v[j]*ysinij
+				j31[b, i - 1] = v[i] * v[j] * ysinij
 				# J41 dQij/dd[i]
-				j41[b, i - 1] = v[i]*v[j]*ycosij
+				j41[b, i - 1] = v[i] * v[j] * ycosij
 				# J51 dPji/dd[i]
-				j51[b, i - 1] = -v[j]*v[i]*ysinji
+				j51[b, i - 1] = -v[j] * v[i] * ysinji
 				# J61 dQji/dd[i]
-				j61[b, i - 1] = -v[j]*v[i]*ycosji
+				j61[b, i - 1] = -v[j] * v[i] * ycosji
 
 			if j != 0:  # Do not include derivatives w.r.t. d[0]
 				# J31 dPij/dd[j]
-				j31[b, j - 1] = -v[i]*v[j]*ysinij
+				j31[b, j - 1] = -v[i] * v[j] * ysinij
 				# J41 dQij/dd[j]
-				j41[b, j - 1] = -v[i]*v[j]*ycosij
+				j41[b, j - 1] = -v[i] * v[j] * ycosij
 				# J51 dPji/dd[j]
-				j51[b, j - 1] = v[j]*v[i]*ysinji
+				j51[b, j - 1] = v[j] * v[i] * ysinji
 				# J61 dQji/dd[j]
-				j61[b, j - 1] = v[j]*v[i]*ycosji
+				j61[b, j - 1] = v[j] * v[i] * ycosji
 
 			# J32 dPij/dV
-			j32[b, i] = -2*v[i]*real(y[i, j]) + v[j]*ycosij
-			j32[b, j] = v[i]*ycosij
+			j32[b, i] = -2 * v[i] * real(y[i, j]) + v[j] * ycosij
+			j32[b, j] = v[i] * ycosij
 			# J42 dQij/dV
-			j42[b, i] = -2*v[i]*(b_chrg/2 - imag(y[i, j])) - v[j]*ysinij
-			j42[b, j] = -v[i]*ysinij
+			j42[b, i] = -2 * v[i] * (b_chrg / 2 - imag(y[i, j])) - v[j] * ysinij
+			j42[b, j] = -v[i] * ysinij
 			# J52 dPji/dV
-			j52[b, j] = -2*v[j]*real(y[j, i]) + v[i]*ycosji
-			j52[b, i] = v[j]*ycosji
+			j52[b, j] = -2 * v[j] * real(y[j, i]) + v[i] * ycosji
+			j52[b, i] = v[j] * ycosji
 			# J62 dQji/dV
-			j62[b, j] = -2*v[j]*(b_chrg/2 - imag(y[j, i])) - v[i]*ysinji
-			j62[b, i] = -v[j]*ysinji
+			j62[b, j] = -2 * v[j] * (b_chrg / 2 - imag(y[j, i])) - v[i] * ysinji
+			j62[b, i] = -v[j] * ysinji
 
 		# Assemble jacobian
 		if self.sparse:
@@ -711,7 +709,6 @@ class PowerSystem:
 		# pvpq: list of PV and pq buses
 		# psched, qsched: list of real, reactive power injections
 
-
 		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
 		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
 		# S = P + jQ
@@ -731,7 +728,7 @@ class PowerSystem:
 		yij = np.abs(self.y_bus[i, j])
 		gij = np.real(self.y_bus[i, j])
 		th_ij = np.angle(self.y_bus[i, j])
-		p_ij = -v[i]**2*gij + v[i]*v[j]*yij*np.cos(th_ij + d[j] - d[i])
+		p_ij = -v[i] ** 2 * gij + v[i] * v[j] * yij * np.cos(th_ij + d[j] - d[i])
 		return p_ij
 
 	def qij_flow(self, d, v, i, j, b):
@@ -739,7 +736,7 @@ class PowerSystem:
 		yij = np.abs(self.y_bus[i, j])
 		bij = np.imag(self.y_bus[i, j])
 		th_ij = np.angle(self.y_bus[i, j])
-		q_ij = -v[i]**2*(b_charging/2 - bij) - v[i]*v[j]*yij*np.sin(th_ij + d[j] - d[i])
+		q_ij = -v[i] ** 2 * (b_charging / 2 - bij) - v[i] * v[j] * yij * np.sin(th_ij + d[j] - d[i])
 		return q_ij
 
 	def branch_flows(self, v, d):
@@ -760,87 +757,6 @@ class PowerSystem:
 			q_ji[b] = self.qij_flow(d, v, j, i, b)
 		return p_ij, q_ij, p_ji, q_ji
 
-	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
-		# Build parameterized jacobian for continuation power flow.
-		y = self.y_bus
-		n = y.shape[0]
-		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
-		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
-		p = s.real
-		q = s.imag
-
-		# Find indices of non-zero ybus entries
-		if self.sparse:
-			row = y.rows
-			col = y.cols
-		else:
-			row, col = np.where(y)
-		if self.sparse:
-			j11 = Sparse.zeros((n - 1, n - 1))
-			j12 = Sparse.zeros((n - 1, pq.size))
-			j21 = Sparse.zeros((pq.size, n - 1))
-			j22 = Sparse.zeros((pq.size, pq.size))
-		else:
-			j11 = np.zeros((n - 1, n - 1))
-			j12 = np.zeros((n - 1, pq.size))
-			j21 = np.zeros((pq.size, n - 1))
-			j22 = np.zeros((pq.size, pq.size))
-		for a in range(row.shape[0]):
-			i = row[a]
-			j = col[a]
-			# J11
-			if i != 0 and j != 0:
-				if i == j:  # Diagonals of J11
-					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
-				else:  # Off-diagonals of J11
-					j11[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
-				# J21
-				if i in pq:
-					k: int = np.where(pq == i)  # map bus index to jacobian index
-					if i == j:  # Diagonals of J21
-						j21[k, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
-					else:  # Off-diagonals of J21
-						j21[k, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
-				# J12
-				if j in pq:
-					l: int = np.where(pq == j)  # map bus index to jacobian index
-					if i == j:  # Diagonals of J12
-						j12[i - 1, l] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
-					else:  # Off-diagonals of J12
-						j12[i - 1, l] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
-				# J22
-				if i in pq and j in pq:
-					k: int = np.where(pq == i)  # map bus index to jacobian index
-					l: int = np.where(pq == j)  # map bus index to jacobian index
-					if i == j:  # Diagonal of J22
-						j22[k, l] = (-j11[i - 1, j - 1] - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
-					else:  # Off-diagonals of J22
-						j22[k, l] = j11[i - 1, j - 1]/v[j]
-		# Assemble jacobian
-		if self.sparse:
-			jtop = Sparse.concatenate((j11, j12), axis=1)
-			jbottom = Sparse.concatenate((j21, j22), axis=1)
-			jacobian = Sparse.concatenate((jtop, jbottom), axis=0)
-		else:
-			jtop = np.concatenate((j11, j12), axis=1)
-			jbottom = np.concatenate((j21, j22), axis=1)
-			jacobian = np.concatenate((jtop, jbottom), axis=0)
-
-		jac = -jacobian
-		# add row for ek and col for psched and qsched
-		nrows = jac.shape[0]
-		ncols = jac.shape[1]
-		if self.sparse:
-			for row in range(nrows):
-				jac[row, ncols] = kpq[row]
-			jac[nrows, kt] = sign
-		else:
-			ek = np.zeros((1, ncols))
-			ek[kt] = sign
-			jac = np.c_[jac, kpq]
-			jac = np.r_[jac, ek]
-		return jac
-
 	# ~~~~~ Continuation Power flow aka Voltage Stability Analyis ~~~~~
 	def cpf_jacobian(self, v, d, pq, kpq, kt, sign):
 		# Build parameterized jacobian for continuation power flow.
@@ -850,84 +766,76 @@ class PowerSystem:
 		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
 		p = s.real
 		q = s.imag
-
+		if self.sparse:
+			tmp = Sparse
+		else:
+			tmp = np
 		# Find indices of non-zero ybus entries
-		if self.sparse:
-			row = y.rows
-			col = y.cols
-		else:
-			row, col = np.where(y)
-		if self.sparse:
-			j11 = Sparse.zeros((n - 1, n - 1))
-			j12 = Sparse.zeros((n - 1, pq.size))
-			j21 = Sparse.zeros((pq.size, n - 1))
-			j22 = Sparse.zeros((pq.size, pq.size))
-		else:
-			j11 = np.zeros((n - 1, n - 1))
-			j12 = np.zeros((n - 1, pq.size))
-			j21 = np.zeros((pq.size, n - 1))
-			j22 = np.zeros((pq.size, pq.size))
+		row, col = tmp.where(y)
+		j11 = tmp.zeros((n - 1, n - 1))
+		j12 = tmp.zeros((n - 1, pq.size))
+		j21 = tmp.zeros((pq.size, n - 1))
+		j22 = tmp.zeros((pq.size, pq.size))
 		for a in range(row.shape[0]):
 			i = row[a]
 			j = col[a]
 			# J11
 			if i != 0 and j != 0:
+				th_ij = np.angle(y[i, j])
+				s_ij = np.sin(th_ij + d[j] - d[i])
+				c_ij = np.cos(th_ij + d[j] - d[i])
+				y_ij = abs(y[i, j])
 				if i == j:  # Diagonals of J11
-					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
+					j11[i - 1, j - 1] = -q[i] - v[i]**2*y[i, i].imag
 				else:  # Off-diagonals of J11
-					j11[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(np.angle(y[i, j]) + d[j] - d[i])
+					j11[i - 1, j - 1] = -v[i]*v[j]*y_ij*s_ij
 				# J21
 				if i in pq:
-					k: int = np.where(pq == i)  # map bus index to jacobian index
+					k: int = np.ravel(np.where(pq == i))[0]  # map bus index to jacobian index
 					if i == j:  # Diagonals of J21
-						j21[k, j - 1] = p[i] - abs(v[i]) ** 2 * y[i, j].real
+						j21[k, j - 1] = p[i] - v[i]**2*y[i, j].real
 					else:  # Off-diagonals of J21
-						j21[k, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i])
+						j21[k, j - 1] = -v[i]*v[j]*y_ij*c_ij
 				# J12
 				if j in pq:
-					l: int = np.where(pq == j)  # map bus index to jacobian index
+					l: int = np.ravel(np.where(pq == j))[0]  # map bus index to jacobian index
 					if i == j:  # Diagonals of J12
-						j12[i - 1, l] = (p[i] + abs(v[i] ** 2 * y[i, j].real))/v[i]
+						j12[i - 1, l] = (p[i] + v[i]**2*y[i, j].real) / v[j]
 					else:  # Off-diagonals of J12
-						j12[i - 1, l] = (abs(v[j] * v[i] * y[i, j]) * np.cos(np.angle(y[i, j]) + d[j] - d[i]))/v[j]
+						j12[i - 1, l] = (v[i]*v[j]*y_ij*c_ij) / v[j]
 				# J22
 				if i in pq and j in pq:
-					k: int = np.where(pq == i)  # map bus index to jacobian index
-					l: int = np.where(pq == j)  # map bus index to jacobian index
+					k: int = np.ravel(np.where(pq == i))[0]  # map bus index to jacobian index
+					l: int = np.ravel(np.where(pq == j))[0]  # map bus index to jacobian index
 					if i == j:  # Diagonal of J22
-						j22[k, l] = (-j11[i - 1, j - 1] - 2 * abs(v[i]) ** 2 * y[i, j].imag)/v[i]
+						j22[k, l] = (-j11[i - 1, j - 1] - 2*v[i]**2*y[i, j].imag) / v[j]
 					else:  # Off-diagonals of J22
-						j22[k, l] = j11[i - 1, j - 1]/v[j]
+						j22[k, l] = j11[i - 1, j - 1] / v[j]
 		# Assemble jacobian
-		if self.sparse:
-			jtop = Sparse.concatenate((j11, j12), axis=1)
-			jbottom = Sparse.concatenate((j21, j22), axis=1)
-			jacobian = Sparse.concatenate((jtop, jbottom), axis=0)
-		else:
-			jtop = np.concatenate((j11, j12), axis=1)
-			jbottom = np.concatenate((j21, j22), axis=1)
-			jacobian = np.concatenate((jtop, jbottom), axis=0)
+		jtop = tmp.concatenate((j11, j12), axis=1)
+		jbottom = tmp.concatenate((j21, j22), axis=1)
+		jacobian = tmp.concatenate((jtop, jbottom), axis=0)
 
-		jac = -jacobian
+		jac = jacobian
 		# add row for ek and col for psched and qsched
 		nrows = jac.shape[0]
 		ncols = jac.shape[1]
 		if self.sparse:
 			for row in range(nrows):
-				jac[row, ncols] = kpq[row]
+				jac[row, ncols] = -kpq[row]
 			jac[nrows, kt] = sign
 		else:
 			ek = np.zeros((1, ncols))
 			ek[kt] = sign
-			jac = np.c_[jac, kpq]
+			jac = np.c_[jac, -kpq]
 			jac = np.r_[jac, ek]
 		return jac
 
 	def voltage_stability(self):
 		print("\n~~~~~~~~~~ Start Voltage Stability Analysis ~~~~~~~~~~\n")
-		σ = 0.1
-		λ = 0
-		psched = self.psched
+		σ = 0.025
+		λ = 1
+		psched = deepcopy(self.psched)
 		qsched = deepcopy(self.qsched)
 		kpq = np.r_[psched, qsched]
 		y = self.y_bus
@@ -937,8 +845,10 @@ class PowerSystem:
 		# ~~~~~~~ Run Conventional Power Flow on Base Case ~~~~~~~~~~
 		v, d = self.flat_start()
 		d = self.pf_dc(d, y, pvpq, psched, lam=λ)
-		v, d, it = ps.pf_newtonraphson(v, d, prec=3, maxit=10, qlim=False, lam=λ)
+		v, d, it = self.pf_newtonraphson(v, d, prec=3, maxit=10, qlim=False, lam=λ)
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+		# ~~~~~ Set watched bus and associated indexes ~~~~~
 		watch_bus = 4
 		watch_index = watch_bus - 1
 		watch_pq_index = watch_index  # initialize
@@ -947,31 +857,33 @@ class PowerSystem:
 				break
 			if bus_type > 0 and watch_index > i:
 				watch_pq_index -= 1
-		results = [[σ, v[watch_index], d[watch_index], λ, psched[0]]]
+		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+		results = [[σ, v[watch_index], d[watch_index], λ, psched[watch_index - 1]]]
 		phase = 1  # phase 1 -> increasing load, phase 2 -> decreasing V, phase 3 -> decreasing load
 
 		# Continuation Power Flow or Voltage Stability Analysis
 		while True:
 
-			kpq_jon = np.zeros(kpq.shape)
-			kpq_jon[watch_index-1] = -1
+			# kpq_jon = np.zeros(kpq.shape)
+			# kpq_jon[watch_index-1] = -1
 			# Calculate Jacobian
 			if phase == 1:
 				kt = len(pvpq) + len(pq)
 				tk = 1
-				jac = self.cpf_jacobian(v, d, pq, kpq_jon, kt, tk)
+				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 			if phase == 2:
 				kt = len(pvpq) + watch_pq_index
 				tk = -1
-				jac = self.cpf_jacobian(v, d, pq, kpq_jon, kt, tk)
+				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 			if phase == 3:
 				kt = len(pvpq) + len(pq)
 				tk = -1
-				jac = self.cpf_jacobian(v, d, pq, kpq_jon, kt, tk)
+				jac = self.cpf_jacobian(v, d, pq, kpq, kt, tk)
 
 			# Calculate update values
 			# ~~~~~~~~~~ Calculated Tangent Vector ~~~~~~~~~~
-			t = mat_solve(jac, np.r_[np.zeros(jac.shape[0]-1), 1])
+			t = mat_solve(jac, np.r_[np.zeros(jac.shape[0] - 1), 1])
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			# ~~~~~~~~~~ Check stopping criteria ~~~~~~~~~~
 			# if λ < 0.35 and phase == 2:
@@ -982,31 +894,31 @@ class PowerSystem:
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			# Update angles: d_(n+1) = d_n + dd
 			d_pred = deepcopy(d)
-			d_pred[pvpq] = d[pvpq] + σ*t[:n - 1]
+			d_pred[pvpq] = d[pvpq] + σ * t[:n - 1]
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
 			v_pred = deepcopy(v)
-			v_pred[pq] = v[pq] + σ*t[n - 1:n + pq.size - 1]
+			v_pred[pq] = v[pq] + σ * t[n - 1:-1]
 			# Update Lambda
-			λ_pred = λ + σ*t[-1]
+			λ_pred = λ + σ * t[-1]
 			# ~~~~~~~~~~ Corrector ~~~~~~~~~~
 
 			d_cor = deepcopy(d_pred)
 			v_cor = deepcopy(v_pred)
 			λ_cor = deepcopy(λ_pred)
 			it = 0
-			maxit = 5
+			maxit = 7
 			while it < maxit:
 				mis, p_calc, q_calc = self.mismatch(v_cor, d_cor, y, pq, pvpq, λ_cor*psched, λ_cor*qsched)
 				if phase == 1 or phase == 3:
 					mis = np.r_[mis, λ_pred - λ_cor]
 				if phase == 2:
-					mis = np.r_[mis, v_cor[watch_index] - v_pred[watch_index]]
+					mis = np.r_[mis, v_pred[watch_index] - v_cor[watch_index]]
 				# Check error
-				if max(abs(mis)) < 10**-3:
+				if max(abs(mis)) < 10 ** -3:
 					break  # return v, d, it
 				jac = self.cpf_jacobian(v_cor, d_cor, pq, kpq, kt, tk)
 				# Calculate update values
-				dx = mat_solve(jac, -mis)
+				dx = mat_solve(jac, mis)
 				# Update angles: d_(n+1) = d_n + dd
 				d_cor[pvpq] = d_cor[pvpq] + dx[:n - 1]
 				# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
@@ -1018,30 +930,32 @@ class PowerSystem:
 			if phase == 1:
 				if it >= maxit:
 					phase = 2
-					σ = 0.025
+					σ = 0.005
 					print('phase 2')
 				else:
 					v = deepcopy(v_cor)
 					d = deepcopy(d_cor)
 					λ = deepcopy(λ_cor)
 					print(round(λ, 8), v[watch_index])
-					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[0]]]]
+					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[watch_index - 1]]]]
 
 			elif phase == 2:
 				if it >= maxit:
 					print("phase 2 not converged")
-					break
-
-
-				v = deepcopy(v_cor)
-				d = deepcopy(d_cor)
-				λ = deepcopy(λ_cor)
-				print(round(λ, 8), v[watch_index])
-				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[0]]]]
-				if results[-2, 3] - results[-1, 3] > 0.2:
+					#break
 					phase = 3
-					σ = 0.1
+					σ = 0.025
 					print('phase 3')
+				else:
+					v = deepcopy(v_cor)
+					d = deepcopy(d_cor)
+					λ = deepcopy(λ_cor)
+					print(round(λ, 8), v[watch_index])
+					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[watch_index - 1]]]]
+					if results[-2, 3] - results[-1, 3] > 0.2:
+						phase = 3
+						σ = 0.1
+						print('phase 3')
 
 			if phase == 3:
 				if λ < 1:
@@ -1051,21 +965,22 @@ class PowerSystem:
 				d = deepcopy(d_cor)
 				λ = deepcopy(λ_cor)
 				print(round(λ, 8), v[watch_index])
-				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[0]]]]
+				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[watch_index - 1]]]]
 
 		return results
 
+
 if __name__ == "__main__":
 	import matplotlib.pyplot as plt
+
 	# case_name = "IEEE14BUS.txt"
 	case_name = "IEEE14BUS_handout.txt"
 	# case_name = "2BUS.txt"
 	ps = PowerSystem(case_name, sparse=True)
-	#v0, d0 = ps.flat_start()
-	#v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10, qlim=False, lam=4)
+	# v0, d0 = ps.flat_start()
+	# v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10, qlim=False, lam=4)
 	results = ps.voltage_stability()
-	plt.plot(results[:, 4], results[:, 1])
+	plt.plot(results[:, 3], results[:, 1])
 	plt.xlim((0, 5))
 	plt.ylim((0, 1.2))
 	plt.show()
-
