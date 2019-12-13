@@ -27,9 +27,21 @@ if __name__ == "__main__":
 	print(lossless_ED)
 
 	# 2. From base case PF, used P_total = P1 + P2
+	ps.psched[0] = lossless_ED[1]/ps.p_base - ps.bus_data[1, ps.busLoadMW]
+	v, d, it = ps.pf_newtonraphson(v, d, prec=3, qlim=False, verbose=False)
+	u = lossless_ED[1]  # initial guess for P2
 	pg2 = lossless_ED[1]
 	dgdx = ps.jacobian_full(v, d)
 	n = dgdx.shape[1]
-	dfdx = (2 * a2[1] * pg2 + a1[1]) * (np.array([dgdx.full[1, :]]))
+	dfdx = (2 * a2[1] * pg2 + a1[1]) * (np.array([dgdx.full[0, :]]))
 	print(dfdx)
-	print(dgdx.full.T ** -1 @ dfdx)
+	l  = -np.array([mat_solve(dgdx.full.T, np.ravel(dfdx))]).T
+	print('lambda', l)
+	dgdu = np.zeros((dgdx.shape))
+	dgdu[0, 0] = 1
+	print('dgdu', dgdu)
+	dfdu = np.zeros((l.shape))
+	dfdu[0] = np.array([a1[1]+a2[1]*u])
+	print('dfdu', dfdu)
+	dldu = dfdu + dgdu.T @ l
+	print('dldu', dldu)

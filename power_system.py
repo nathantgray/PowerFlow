@@ -503,9 +503,9 @@ class PowerSystem:
 		row, col = tmp.where(y)
 
 		j11 = tmp.zeros((n - 1, n - 1))
-		j12 = tmp.zeros((n - 1, n))
-		j21 = tmp.zeros((n, n - 1))
-		j22 = tmp.zeros((n, n))
+		j12 = tmp.zeros((n - 1, n - 1))
+		j21 = tmp.zeros((n - 1, n - 1))
+		j22 = tmp.zeros((n - 1, n - 1))
 
 		for a in range(row.shape[0]):
 			i = row[a]
@@ -520,23 +520,21 @@ class PowerSystem:
 					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
 				else:  # Off-diagonals of J11  dPi/ddj
 					j11[i - 1, j - 1] = -v[i] * v[j] * y_ij * s_ij
-			if j != 0:
 				# J21
 				if i == j:  # Diagonals of J21  dQi/ddi
-					j21[i, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
+					j21[i - 1, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
 				else:  # Off-diagonals of J21  dQi/ddj
-					j21[i, j - 1] = -v[i] * v[j] * y_ij * c_ij
-			if i != 0:
+					j21[i - 1, j - 1] = -v[i] * v[j] * y_ij * c_ij
 				# J12
 				if i == j:  # Diagonals of J12
-					j12[i - 1, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
+					j12[i - 1, j - 1] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
 				else:  # Off-diagonals of J12
-					j12[i - 1, j] = (v[j] * v[i] * y_ij * c_ij) / v[j]
-			# J22
-			if i == j:  # Diagonal of J22
-				j22[i, j] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * v[i] ** 2 * y[i, j].imag) / v[i]
-			else:  # Off-diagonals of J22
-				j22[i, j] = (-v[i] * v[j] * y_ij * s_ij) / v[j]
+					j12[i - 1, j - 1] = (v[j] * v[i] * y_ij * c_ij) / v[j]
+				# J22
+				if i == j:  # Diagonal of J22
+					j22[i - 1, j - 1] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * v[i] ** 2 * y[i, j].imag) / v[i]
+				else:  # Off-diagonals of J22
+					j22[i - 1, j - 1] = (-v[i] * v[j] * y_ij * s_ij) / v[j]
 
 		# Assemble jacobian
 		jtop = tmp.concatenate((j11, j12), axis=1)
