@@ -408,7 +408,7 @@ class PowerSystem:
 
 		return pv, pq, qsched
 
-	def pf_jacobian(self, v, d, pq, decoupled=False):
+	def pf_jacobian(self, v, d, pq, decoupled=False, v_mul=True):
 		# This function was written by Nathan Gray using formulas from chapter 9 of
 		# "Power Systems Analysis" J. Grainger et al.
 		# Calculates the Jacobian Matrix for use in the Newton-Raphson Method.
@@ -464,6 +464,8 @@ class PowerSystem:
 						j12[i - 1, l] = p[i] + v[i]**2*y[i, j].real
 					else:  # Off-diagonals of J12
 						j12[i - 1, l] = v[i]*v[j]*y_ij*c_ij
+					if not v_mul:
+						j12[i - 1, l] /= v[j]
 				# J22
 				if i in pq and j in pq:
 					k: int = np.ravel(np.where(pq == i))[0]  # map bus index to jacobian index
@@ -472,6 +474,8 @@ class PowerSystem:
 						j22[k, l] = -j11[i - 1, j - 1] - 2*v[i]**2*y[i, j].imag
 					else:  # Off-diagonals of J22
 						j22[k, l] = j11[i - 1, j - 1]
+					if not v_mul:
+						j22[k, l] /= v[j]
 		# Assemble jacobian
 		jtop = tmp.concatenate((j11, j12), axis=1)
 		jbottom = tmp.concatenate((j21, j22), axis=1)
@@ -481,67 +485,38 @@ class PowerSystem:
 		else:
 			return jacobian
 
-	def jacobian_full(self, v, d):
-		# This function was written by Nathan Gray using formulas from chapter 9 of
-		# "Power Systems Analysis" J. Grainger et al.
-		# Calculates the Jacobian Matrix for use in the Newton-Raphson Method.
-		# Arguments:
-		# v: Voltage magnitudes
-		# d: Voltage phase angles
+	def dslack_dx(self, v, d, pq):
+
 		y = self.y_bus
 		n = y.shape[0]
-		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
-		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
-		p = s.real
-		q = s.imag
-
-		# Find indices of non-zero ybus entries
 		if self.sparse:
 			tmp = Sparse
+			y = y.full[0, 1:]
 		else:
 			tmp = np
-		row, col = tmp.where(y)
+			y = y[0, :]
+		# Find indices of non-zero ybus entries
+		col = np.where(y)[0]
 
-		j11 = tmp.zeros((n - 1, n - 1))
-		j12 = tmp.zeros((n - 1, n - 1))
-		j21 = tmp.zeros((n - 1, n - 1))
-		j22 = tmp.zeros((n - 1, n - 1))
+		j11 = np.zeros((1, n - 1))
+		j12 = np.zeros((1, pq.size))
 
-		for a in range(row.shape[0]):
-			i = row[a]
-			j = col[a]
-			th_ij = np.angle(y[i, j])
-			s_ij = np.sin(th_ij + d[j] - d[i])
-			c_ij = np.cos(th_ij + d[j] - d[i])
-			y_ij = abs(y[i, j])
-			if i != 0 and j != 0:
-				# J11
-				if i == j:  # Diagonals of J11  dPi/ddi
-					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
-				else:  # Off-diagonals of J11  dPi/ddj
-					j11[i - 1, j - 1] = -v[i] * v[j] * y_ij * s_ij
-				# J21
-				if i == j:  # Diagonals of J21  dQi/ddi
-					j21[i - 1, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
-				else:  # Off-diagonals of J21  dQi/ddj
-					j21[i - 1, j - 1] = -v[i] * v[j] * y_ij * c_ij
-				# J12
-				if i == j:  # Diagonals of J12
-					j12[i - 1, j - 1] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
-				else:  # Off-diagonals of J12
-					j12[i - 1, j - 1] = (v[j] * v[i] * y_ij * c_ij) / v[j]
-				# J22
-				if i == j:  # Diagonal of J22
-					j22[i - 1, j - 1] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * v[i] ** 2 * y[i, j].imag) / v[i]
-				else:  # Off-diagonals of J22
-					j22[i - 1, j - 1] = (-v[i] * v[j] * y_ij * s_ij) / v[j]
+		for a in range(len(col)):
+			i = 0
+			j: int = col[a]
+			if j != 0:
+				th_ij = np.angle(y[j])
+				s_ij = np.sin(th_ij + d[j])
+				c_ij = np.cos(th_ij + d[j])
+				y_ij = abs(y[j])
 
+				j11[0, j - 1] = -v[i]*v[j]*y_ij*s_ij
+				if j in pq:
+					l: int = np.ravel(np.where(pq == j))[0]  # map bus index to jacobian index
+					j12[0, l] = v[i]*v[j]*y_ij*c_ij/v[j]
 		# Assemble jacobian
-		jtop = tmp.concatenate((j11, j12), axis=1)
-		jbottom = tmp.concatenate((j21, j22), axis=1)
-		jacobian = tmp.concatenate((jtop, jbottom), axis=0)
-
-		return jacobian
+		dp1dx = np.concatenate((j11, j12), axis=1).T
+		return dp1dx
 
 	# ~~~~~ State Estimation ~~~~~
 	def se_h_matrix(self, v, d):
@@ -831,7 +806,7 @@ class PowerSystem:
 
 	def voltage_stability(self):
 		print("\n~~~~~~~~~~ Start Voltage Stability Analysis ~~~~~~~~~~\n")
-		σ = 0.025
+		σ = 0.1
 		λ = 1
 		psched = deepcopy(self.psched)
 		qsched = deepcopy(self.qsched)
@@ -847,7 +822,7 @@ class PowerSystem:
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 		# ~~~~~ Set watched bus and associated indexes ~~~~~
-		watch_bus = 4
+		watch_bus = 12
 		watch_index = watch_bus - 1
 		watch_pq_index = watch_index  # initialize
 		for i, bus_type in enumerate(self.bus_data[:, self.busType]):
@@ -928,7 +903,7 @@ class PowerSystem:
 			if phase == 1:
 				if it >= maxit:
 					phase = 2
-					σ = 0.005
+					σ = 0.025
 					print('phase 2')
 				else:
 					v = deepcopy(v_cor)
@@ -942,7 +917,7 @@ class PowerSystem:
 					print("phase 2 not converged")
 					#break
 					phase = 3
-					σ = 0.025
+					σ = 0.1
 					print('phase 3')
 				else:
 					v = deepcopy(v_cor)
