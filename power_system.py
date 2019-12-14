@@ -491,7 +491,7 @@ class PowerSystem:
 		n = y.shape[0]
 		if self.sparse:
 			tmp = Sparse
-			y = y.full[0, 1:]
+			y = y.full[0, :]
 		else:
 			tmp = np
 			y = y[0, :]
@@ -804,7 +804,7 @@ class PowerSystem:
 			jac = np.r_[jac, ek]
 		return jac
 
-	def voltage_stability(self):
+	def pf_continuation(self, watch_bus):
 		print("\n~~~~~~~~~~ Start Voltage Stability Analysis ~~~~~~~~~~\n")
 		σ = 0.1
 		λ = 1
@@ -822,7 +822,7 @@ class PowerSystem:
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 		# ~~~~~ Set watched bus and associated indexes ~~~~~
-		watch_bus = 12
+		# watch_bus = 4
 		watch_index = watch_bus - 1
 		watch_pq_index = watch_index  # initialize
 		for i, bus_type in enumerate(self.bus_data[:, self.busType]):
@@ -832,7 +832,7 @@ class PowerSystem:
 				watch_pq_index -= 1
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-		results = [[σ, v[watch_index], d[watch_index], λ, psched[watch_index - 1]]]
+		results = [[σ, v[watch_index], d[watch_index], λ, λ*self.psched[watch_index - 1], λ*self.qsched[watch_pq_index ]]]
 		phase = 1  # phase 1 -> increasing load, phase 2 -> decreasing V, phase 3 -> decreasing load
 
 		# Continuation Power Flow or Voltage Stability Analysis
@@ -858,13 +858,6 @@ class PowerSystem:
 			# ~~~~~~~~~~ Calculated Tangent Vector ~~~~~~~~~~
 			t = mat_solve(jac, np.r_[np.zeros(jac.shape[0] - 1), 1])
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-			# ~~~~~~~~~~ Check stopping criteria ~~~~~~~~~~
-			# if λ < 0.35 and phase == 2:
-			# 	break
-			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-			# ~~~~~~~~~~ Choose Continuation Parameter For Next Step ~~~~~~~~~~
-			# _kt = np.argmax(abs(t))
-			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			# Update angles: d_(n+1) = d_n + dd
 			d_pred = deepcopy(d)
 			d_pred[pvpq] = d[pvpq] + σ * t[:n - 1]
@@ -910,7 +903,7 @@ class PowerSystem:
 					d = deepcopy(d_cor)
 					λ = deepcopy(λ_cor)
 					print(round(λ, 8), v[watch_index])
-					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[watch_index - 1]]]]
+					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, λ*self.psched[watch_index - 1], λ*self.qsched[watch_pq_index ]]]]
 
 			elif phase == 2:
 				if it >= maxit:
@@ -919,18 +912,19 @@ class PowerSystem:
 					phase = 3
 					σ = 0.1
 					print('phase 3')
+				elif results[-2, 3] - results[-1, 3] > 0.2:
+					phase = 3
+					σ = 0.1
+					print('phase 3')
 				else:
 					v = deepcopy(v_cor)
 					d = deepcopy(d_cor)
 					λ = deepcopy(λ_cor)
 					print(round(λ, 8), v[watch_index])
-					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[watch_index - 1]]]]
-					if results[-2, 3] - results[-1, 3] > 0.2:
-						phase = 3
-						σ = 0.1
-						print('phase 3')
+					results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, λ*self.psched[watch_index - 1], λ*self.qsched[watch_pq_index ]]]]
 
 			if phase == 3:
+				# break
 				if λ < 1:
 					break
 
@@ -938,7 +932,7 @@ class PowerSystem:
 				d = deepcopy(d_cor)
 				λ = deepcopy(λ_cor)
 				print(round(λ, 8), v[watch_index])
-				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, p_calc[watch_index - 1]]]]
+				results = np.r_[results, [[σ, v[watch_index], d[watch_index], λ, λ*self.psched[watch_index - 1], λ*self.qsched[watch_pq_index ]]]]
 
 		return results
 
@@ -952,8 +946,13 @@ if __name__ == "__main__":
 	ps = PowerSystem(case_name, sparse=True)
 	# v0, d0 = ps.flat_start()
 	# v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=2, maxit=10, qlim=False, lam=4)
-	results = ps.voltage_stability()
-	plt.plot(results[:, 3], results[:, 1])
-	plt.xlim((0, 5))
-	plt.ylim((0, 1.2))
+	watch_bus = 14
+	results = ps.pf_continuation(watch_bus)
+	nose_point_index = np.argmax(results[:, 3])
+	nose_point = results[nose_point_index, :]
+	print(nose_point)
+	plt.plot(results[:, 3], results[:, 1], '-o')
+	plt.title('PV Curve for Modified IEEE 14-Bus System at Bus {}'.format(watch_bus))
+	plt.xlabel('Lambda (schedule multiplication factor)')
+	plt.ylabel('Bus Voltage (p.u.)')
 	plt.show()
