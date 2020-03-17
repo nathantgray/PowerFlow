@@ -143,7 +143,7 @@ if __name__ == "__main__":
 	import matplotlib.pyplot as plt
 
 	# case_name = "IEEE14BUS.txt"
-	case_name = "IEEE14BUS_handout.txt"
+	# case_name = "IEEE14BUS_handout.txt"
 	# case_name = "2BUS.txt"
 	ps = CPF_demonstration(case_name, sparse=True)
 	watch_bus = 14

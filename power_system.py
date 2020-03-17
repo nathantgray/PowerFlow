@@ -1,9 +1,9 @@
 import numpy as np
+import pandas as pd
 from copy import deepcopy
 from crout_reorder import mat_solve
 from sparse import Sparse
 from numpy import sin, cos, angle, imag, real
-
 
 class PowerSystem:
 	def __init__(self, filename, sparse=False):
@@ -51,11 +51,14 @@ class PowerSystem:
 		self.mw_gen = self.bus_data[self.pvpq, self.busGenMW]
 		self.mw_load = self.bus_data[self.pvpq, self.busLoadMW]
 		self.mvar_load = self.bus_data[self.pq, self.busLoadMVAR]
+		self.mw_gen_full = self.bus_data[:, self.busGenMW]
+		self.mw_load_full = self.bus_data[:, self.busLoadMW]
 		self.mvar_load_full = self.bus_data[:, self.busLoadMVAR]
 		self.q_load_full = self.mvar_load_full / self.p_base
 		self.psched = np.array(self.mw_gen - self.mw_load) / self.p_base
 		self.qsched = np.array(- self.mvar_load) / self.p_base
 		self.qsched_full = np.array(- self.mvar_load_full) / self.p_base
+		self.psched_full = np.array(self.mw_gen_full - self.mw_load_full) / self.p_base
 		self.q_lim = np.c_[
 			self.bus_data[:, self.busMaxMVAR] / self.p_base,
 			self.bus_data[:, self.busMinMVAR] / self.p_base]
@@ -236,7 +239,8 @@ class PowerSystem:
 		return v_flat, d_flat
 
 	@staticmethod
-	def pf_dc(d, y, pvpq, psched, lam=None):
+	def pf_dc(d_start, y, pvpq, psched, lam=None):
+		d = deepcopy(d_start)
 		bdc = -y.imag[pvpq, :][:, pvpq]
 		if lam is not None:
 			d[pvpq] = mat_solve(bdc, lam * psched)
@@ -244,7 +248,7 @@ class PowerSystem:
 			d[pvpq] = mat_solve(bdc, psched)
 		return d
 
-	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None, verbose=True):
+	def pf_newtonraphson(self, v_start, d_start, prec=2, maxit=4, qlim=True, qlim_prec=2, lam=None, verbose=True, debug_file=None):
 		# Uses Newton-Raphson method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -267,11 +271,20 @@ class PowerSystem:
 		pv = deepcopy(self.pv)
 		pq_last = deepcopy(pq)
 		n = np.shape(y)[0]
+
+		if debug_file is not None:
+			results = []
+			df_space = pd.DataFrame(data={"": [""]})
+
 		i = 0
 		# Newton Raphson
 		for i in range(maxit + 1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
+			if debug_file is not None:
+				results.append(self.results2df(v, d))
+				results.append(pd.DataFrame(data={"It: {}, E: {:.2E}".format(i, max(abs(mis))): [""]}))
+				results.append(df_space)
 			if verbose:
 				print("error: ", max(abs(mis)))
 			pq_last = deepcopy(pq)
@@ -285,6 +298,8 @@ class PowerSystem:
 				if verbose:
 					print("Newton Raphson completed in ", i, " iterations.")
 				# pv, pq, qsched = self.check_limits(v, d, y, pv, pq)
+				if debug_file is not None:
+					pd.concat(results, axis=1, sort=False).to_csv(debug_file, float_format='%.3f')
 				return v, d, i
 			# Calculate Jacobian
 			j = self.pf_jacobian(v, d, pq)
@@ -294,12 +309,16 @@ class PowerSystem:
 			d[pvpq] = d[pvpq] + dx[:n - 1]
 			# Update Voltages: V_(n+1) = V_n(1+dV/V_n)
 			v[pq] = v[pq] * (1 + dx[n - 1:n + pq.size - 1])
+
+
+		if debug_file is not None:
+			pd.concat(results, axis=1, sort=False).to_csv(debug_file, float_format='%.3f')
 		# print(v, d)
 		if verbose:
 			print("Max iterations reached, ", i, ".")
 		return v, d, i
 
-	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100, qlim=True, qlim_prec=2):
+	def pf_fast_decoupled(self, v_start, d_start, prec=2, maxit=100, qlim=True, qlim_prec=2, debug_file=None):
 		# Uses Fast Decoupled method to solve the power-flow of a power system.
 		# Written by Nathan Gray
 		# Arguments:
@@ -321,13 +340,26 @@ class PowerSystem:
 		pq_last = deepcopy(pq)
 		# Decoupled Power Flow
 		bd = -bp.imag[pvpq, :][:, pvpq]
-		bv = -bpp.imag[pq, :][:, pq]
+		bv = -bpp.imag[pq, :][:, pq]    # TODO: Trouble here for certain combinations of PV buses on Kundur system
 		# bd = self.pf_jacobian(v, d, pq, decoupled=True)[0]
 		# bv = self.pf_jacobian(v, d, pq, decoupled=True)[1]
+
+		if debug_file is not None:
+			results = []
+			df_space = pd.DataFrame(data={"": [""]})
+			pd.DataFrame(data=y.real).to_csv('yreal_'+debug_file, float_format='%.3f')
+			pd.DataFrame(data=y.imag).to_csv('yimag_'+debug_file, float_format='%.3f')
+			pd.DataFrame(data=bd).to_csv('bd_'+debug_file, float_format='%.3f')
+			pd.DataFrame(data=bv).to_csv('bv_'+debug_file, float_format='%.3f')
+
 		i = 0
 		for i in range(maxit + 1):
 			# Calculate Mismatches
 			mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
+			if debug_file is not None:
+				results.append(self.results2df(v, d))
+				results.append(pd.DataFrame(data={"It: {}, E: {:.2E}".format(i, max(abs(mis))): [""]}))
+				results.append(df_space)
 			print("error: ", max(abs(mis)))
 			pq_last = deepcopy(pq)
 			if qlim and max(abs(mis)) < 10 ** -abs(qlim_prec):  # Do q-limit check
@@ -340,12 +372,31 @@ class PowerSystem:
 			# Check error
 			if max(abs(mis)) < 10 ** -abs(prec) and np.array_equiv(pq_last, pq):
 				print("Decoupled Power Flow completed in ", i, " iterations.")
+				if debug_file is not None:
+					pd.concat(results, axis=1, sort=False).to_csv(debug_file, float_format='%.3f')
 				return v, d, i
 			d[pvpq] = d[pvpq] + mat_solve(bd, mis[0:len(pvpq)] / v[pvpq])
+			# mis, p_calc, q_calc = self.mismatch(v, d, y, pq, pvpq, psched, qsched)
 			v[pq] = v[pq] + mat_solve(bv, mis[len(pvpq):] / v[pq])
+
+
+		if debug_file is not None:
+			pd.concat(results, axis=1, sort=False).to_csv(debug_file, float_format='%.3f')
 
 		print("Max iterations reached, ", i, ".")
 		return v, d, i
+
+	def results2df(self, v, d):
+		s = (v * np.exp(1j * d)) * np.conj(self.y_bus.dot(v * np.exp(1j * d)))
+		sol_dic = {
+			'Bus': self.bus_data[:, 0],
+			"Type": self.bus_data[:, 4],
+			"V Result": v,
+			"Angle Result": d * 180 / np.pi + self.bus_data[0, 6],
+			"MW Injected": s.real * self.p_base,
+			"MVAR Injected": s.imag * self.p_base}
+		df = pd.DataFrame(data=sol_dic)
+		return df
 
 	def check_limits(self, v, d, y, pv, pq):
 		q_lim = self.q_lim
@@ -936,6 +987,94 @@ class PowerSystem:
 
 		return results
 
+	def dgdx(self, x):
+		lenx = len(x)
+		d = np.r_[0, x[0:lenx//2]]
+		v = np.r_[self.bus_data[0, self.busDesiredVolts], x[lenx//2:]]
+		y = self.y_bus
+		n = y.shape[0]
+		nb = len(self.branch_data[:, 0])
+		# S = V*conj(I) and I = Y*V => S = V*conj(Y*V)
+		s = (v * np.exp(1j * d)) * np.conj(y.dot(v * np.exp(1j * d)))
+		p = s.real
+		q = s.imag
+
+		# Find indices of non-zero ybus entries
+		if self.sparse:
+			row = y.rows
+			col = y.cols
+			tmp = Sparse
+		else:
+			row, col = np.where(y)
+			tmp = np
+
+		j11 = tmp.zeros((n - 1, n - 1))
+		j12 = tmp.zeros((n - 1, n - 1))
+		j21 = tmp.zeros((n - 1, n - 1))
+		j22 = tmp.zeros((n - 1, n - 1))
+
+		for a in range(row.shape[0]):
+			i = row[a]
+			j = col[a]
+			th_ij = np.angle(y[i, j])
+
+			if i != 0 and j != 0:  # J11
+				if i == j:  # Diagonals of J11  dPi/ddi
+					j11[i - 1, j - 1] = - q[i] - v[i] ** 2 * y[i, i].imag
+				else:  # Off-diagonals of J11  dPi/ddj
+					j11[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i])
+			# if j != 0:  # J21
+				if i == j:  # Diagonals of J21  dQi/ddi
+					j21[i - 1, j - 1] = p[i] - v[i] ** 2 * y[i, j].real
+				else:  # Off-diagonals of J21  dQi/ddj
+					j21[i - 1, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(th_ij + d[j] - d[i])
+			# if i != 0:  # J12
+				if i == j:  # Diagonals of J12
+					j12[i - 1, j - 1] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
+				else:  # Off-diagonals of J12
+					j12[i - 1, j - 1] = (abs(v[j] * v[i] * y[i, j]) * np.cos(th_ij + d[j] - d[i])) / v[j]
+			# J22
+				if i == j:  # Diagonal of J22
+					j22[i - 1, j - 1] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag) / v[i]
+				else:  # Off-diagonals of J22
+					j22[i - 1, j - 1] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i])) / v[j]
+
+
+
+		# Assemble jacobian
+		j1 = tmp.concatenate((j11, j12), axis=1)
+		j2 = tmp.concatenate((j21, j22), axis=1)
+		jacobian = tmp.concatenate((j1, j2), axis=0)
+
+		return jacobian
+
+	def g(self, x):
+		lenx = len(x)
+		d = np.r_[0, x[0:lenx//2]]
+		v = np.r_[self.bus_data[0, self.busDesiredVolts], x[lenx//2:]]
+		s = self.complex_injections(v, d)
+		p = s.real
+		q = s.imag
+		return np.r_[self.psched_full[1:] - p[1:], self.qsched_full[1:] - q[1:]]
+
+	def nr(self, func, x0, fprime, maxit=10, prec=3, verbose=True):
+		x =deepcopy(x0)
+		for i in range(maxit + 1):
+			# Calculate Mismatches
+			mis = func(x)
+			if verbose:
+				print("error: ", max(abs(mis)))
+			# Check error
+			if max(abs(mis)) < 10 ** -abs(prec):
+				if verbose:
+					print("Newton Raphson completed in ", i, " iterations.")
+				return x, i
+			# Calculate Jacobian
+			j = fprime(x)
+			# Calculate update values
+			dx = mat_solve(j, mis)
+			# Update angles: d_(n+1) = d_n + dd
+			x = x - dx
 
 if __name__ == "__main__":
 	import matplotlib.pyplot as plt
