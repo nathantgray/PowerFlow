@@ -621,14 +621,14 @@ class PowerSystem:
 				else:  # Off-diagonals of J21  dQi/ddj
 					j21[i, j - 1] = -abs(v[i] * v[j] * y[i, j]) * np.cos(th_ij + d[j] - d[i])
 			# J12
-			if i == j:  # Diagonals of J12
+			if i == j:  # Diagonals of J12  dPi/dvi
 				j12[i, j] = (p[i] + abs(v[i] ** 2 * y[i, j].real)) / v[i]
-			else:  # Off-diagonals of J12
+			else:  # Off-diagonals of J12  dPi/dvj
 				j12[i, j] = (abs(v[j] * v[i] * y[i, j]) * np.cos(th_ij + d[j] - d[i])) / v[j]
 			# J22
-			if i == j:  # Diagonal of J22
+			if i == j:  # Diagonal of J22  dQi/dvi
 				j22[i, j] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag) / v[i]
-			else:  # Off-diagonals of J22
+			else:  # Off-diagonals of J22  dQi/dvj
 				j22[i, j] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i])) / v[j]
 
 		for b, _ in enumerate(self.branch_data[:, 0]):
@@ -1038,8 +1038,6 @@ class PowerSystem:
 					j22[i - 1, j - 1] = (q[i] + v[i] ** 2 * y[i, i].imag - 2 * abs(v[i]) ** 2 * y[i, j].imag) / v[i]
 				else:  # Off-diagonals of J22
 					j22[i - 1, j - 1] = (-abs(v[i] * v[j] * y[i, j]) * np.sin(th_ij + d[j] - d[i])) / v[j]
-
-
 
 		# Assemble jacobian
 		j1 = tmp.concatenate((j11, j12), axis=1)
