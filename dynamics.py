@@ -4,6 +4,7 @@ from numpy import sin, cos
 import numpy as np
 from power_system import PowerSystem
 import pandas as pd
+from numpy.linalg import inv, eig
 import matplotlib.pyplot as plt
 import matplotlib as mplt
 
@@ -329,22 +330,24 @@ def dyn_D(x, y, df, ps):
 	dg = ps.dgdx(np.r_[d[1:], v[1:]])
 	for ibus in range(1, N):
 		iy = ibus - 1
+		ip = iy
+		iq = iy + N - 1
 		for jy in range(2 * (N - 1)):
 			if ibus in ps.pv:
 				#  dPg
 				if jy == iy:  # if referring to local bus angle
 					jac[iy, jy] = -v[ibus] * cos(th[iy] - d[ibus]) * Id[iy] + v[ibus] * sin(th[iy] - d[ibus]) * Iq[iy] - (
 						dg[iy, jy])
-				elif jy == N - 1 + iy:  # if referring to local bus voltage
+				elif jy == iy + N - 1:  # if referring to local bus voltage
 					jac[iy, jy] = sin(th[iy] - d[ibus]) * Id[iy] + cos(th[iy] - d[ibus]) * Iq[iy] - (dg[iy, jy])
 				else:
 					jac[iy, jy] = (dg[iy, jy])
 
 				#  dQg
-				if jy + N - 1 == iy:  # if referring to local bus angle  TODO: fix indexing
+				if jy == iy:  # if referring to local bus angle  TODO: fix indexing
 					jac[iy + N - 1, jy] = v[ibus] * sin(th[iy] - d[ibus]) * Id[iy] + v[ibus] * cos(th[iy] - d[ibus]) * Iq[iy] - (
 						dg[iy + N - 1, jy])
-				elif jy == N - 1 + iy:  # if referring to local bus voltage
+				elif jy == iy + N - 1:  # if referring to local bus voltage
 					jac[iy + N - 1, jy] = cos(th[iy] - d[ibus]) * Id[iy] - sin(th[iy] - d[ibus]) * Iq[iy] - (dg[iy + N - 1, jy])
 				else:
 					jac[iy + N - 1, jy] = (dg[iy + N - 1, jy])
@@ -356,7 +359,8 @@ def dyn_D(x, y, df, ps):
 
 if __name__ == "__main__":
 	# case_name = "2BUS.txt"
-	case_name = 'Kundur_modified.txt'
+	case_name = 'KundurEx12-6.txt'
+	# case_name = 'Kundur_modified.txt'
 	ps = PowerSystem(case_name, sparse=False)
 	v0, d0 = ps.flat_start()
 	v_nr, d_nr, it = ps.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False)
@@ -429,15 +433,17 @@ if __name__ == "__main__":
 
 		)
 
-	print(xsys)
+	# print(xsys)
 	A = dyn_A(xsys, y, kundur_dyn)
 	B = dyn_B(xsys, y, kundur_dyn, ps)
 	C = dyn_C(xsys, y, kundur_dyn)
 	D = dyn_D(xsys, y, kundur_dyn, ps)
-	J = A - B @ D ** -1 @ C
+	J = A - B @ inv(D) @ C
+	evA, _ = eig(A)
+	evJ, _ = eig(J)
 	dg = ps.dgdx(np.r_[d_nr[1:], v_nr[1:]])
-print(A)
-print(B)
+	print('evA:\n', np.sort(evA.real))
+	print('evJ:\n', np.sort(evJ.real ))
 # fig = plt.figure()
 # ax = fig.add_subplot(111, polar=True)
 # ax.set_thetamin(0)
