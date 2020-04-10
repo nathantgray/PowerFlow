@@ -41,7 +41,7 @@ class PowerSystem:
 
 		# Get bus types
 		types = self.bus_data[:, self.busType]
-		# slack = np.where(types == 3)
+		self.slack = np.where(types == 3)[0]
 		self.pv = np.where(types == 2)[0]  # list of PV bus indices
 		self.pq = np.where(types < 2)[0]  # list of PQ bus indices
 		self.pvpq = np.sort(np.concatenate((self.pv, self.pq)))  # list of indices of non-slack buses
@@ -54,6 +54,7 @@ class PowerSystem:
 		self.mw_gen_full = self.bus_data[:, self.busGenMW]
 		self.mw_load_full = self.bus_data[:, self.busLoadMW]
 		self.mvar_load_full = self.bus_data[:, self.busLoadMVAR]
+		self.p_load_full = self.mw_load_full / self.p_base
 		self.q_load_full = self.mvar_load_full / self.p_base
 		self.psched = np.array(self.mw_gen - self.mw_load) / self.p_base
 		self.qsched = np.array(- self.mvar_load) / self.p_base
@@ -163,10 +164,15 @@ class PowerSystem:
 				i = i + 1
 		return bus_data, branch_data, mva_base
 
-	def makeybus(self, make_bpp=False, make_bp=False):
+	def makeybus(self, make_bpp=False, make_bp=False, override=None):
 		# Produces the Y bus matrix of a power system.
 		# Written by Nathan Gray
-
+		if isinstance(override, tuple):
+			bus_data = override[0]
+			branch_data = override[1]
+		else:
+			bus_data = self.bus_data
+			branch_data = self.branch_data
 		busShuntG = 15
 		busShuntB = 16
 
@@ -176,28 +182,28 @@ class PowerSystem:
 		branchTurnsRatio = 14
 		branchPhaseShift = 15
 
-		nl = self.branch_data.shape[0]  # number of lines
-		n = self.bus_data.shape[0]  # number of buses
+		nl = branch_data.shape[0]  # number of lines
+		n = bus_data.shape[0]  # number of buses
 		# Prepare data for algorithm
 		if make_bp:
-			z = self.branch_data[:, branchX] * 1j
+			z = branch_data[:, branchX] * 1j
 		else:
-			z = self.branch_data[:, branchR] + self.branch_data[:, branchX] * 1j
+			z = branch_data[:, branchR] + branch_data[:, branchX] * 1j
 		y = z ** -1
-		b_line = self.branch_data[:, branchB]
+		b_line = branch_data[:, branchB]
 		if make_bp:
 			ratio = np.ones(nl)
 		else:
-			ratio = np.where(self.branch_data[:, branchTurnsRatio] == 0.0, 1, self.branch_data[:, branchTurnsRatio])
+			ratio = np.where(branch_data[:, branchTurnsRatio] == 0.0, 1, branch_data[:, branchTurnsRatio])
 		if make_bpp:
 			shift = np.zeros(nl)
 		else:
-			shift = np.radians(self.branch_data[:, branchPhaseShift])
+			shift = np.radians(branch_data[:, branchPhaseShift])
 		t = ratio * np.cos(shift) + 1j * ratio * np.sin(shift)
 		# Shunt admittances for each bus.
-		y_shunt = self.bus_data[:, busShuntG] + 1j * self.bus_data[:, busShuntB]
-		frombus = self.branch_data[:, 0]
-		tobus = self.branch_data[:, 1]
+		y_shunt = bus_data[:, busShuntG] + 1j * bus_data[:, busShuntB]
+		frombus = branch_data[:, 0]
+		tobus = branch_data[:, 1]
 
 		if self.sparse:
 			y_bus = Sparse.zeros((n, n), dtype=complex)  # initialize Y Bus Matrix
