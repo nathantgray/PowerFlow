@@ -12,6 +12,7 @@ from scipy.linalg import eig
 class DynamicSystem(PowerSystem):
 	def __init__(self, filename, params, sparse=False):
 		PowerSystem.__init__(self, filename, sparse=sparse)
+		self.pf_initialized = False
 		u = params
 		self.ws = u['ws']
 		self.H = u['H']
@@ -35,20 +36,39 @@ class DynamicSystem(PowerSystem):
 		self.Psg_min = u['Psg_min']
 		self.Psg_max = u['Psg_max']
 		self.R = u['R']
+		self.constZ = u['constZ']
+		self.constI = u['constI']
+		self.constP = u['constP']
 		self.Pc = self.bus_data[self.pv, self.busGenMW] / self.p_base
 		self.vref = self.bus_data[self.pv, self.busDesiredVolts]
 		self.v_desired = self.bus_data[self.pv, self.busDesiredVolts]
 		self.vslack = self.bus_data[0, self.busDesiredVolts]
 		self.y_gen = self.makeygen()
-
 		self.h = 10**-8
+
+	def pf_init(self, prec=7, maxit=10, qlim=False, verbose=False):
+		self.pf_initialized = True
+		v0, d0 = self.flat_start()
+		v, d, it = self.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False, verbose=False)
+		self.v = v
+		self.d = d
+
+	def p_load(self, _v):
+		if not self.pf_initialized:
+			self.pf_init()
+		return self.p_load_full*(self.constP + self.constI / self.v * _v + self.constZ / self.v ** 2 * _v ** 2)
+
+	def q_load(self, _v):
+		if not self.pf_initialized:
+			self.pf_init()
+		return self.q_load_full*(self.constP + self.constI / self.v * _v + self.constZ / self.v ** 2 * _v ** 2)
 
 	def makeygen(self):
 		n = len(self.bus_data[:, 0])
-		v0, d0 = self.flat_start()
-		v, d, it = self.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False, verbose=False)
-		# v_ = (v * np.exp(1j * d))  # voltage phasor
-		# s = v_ * np.conj(dps.y_bus.dot(v_))
+		if not self.pf_initialized:
+			self.pf_init()
+		v = self.v
+
 		# modify bus data
 		y_load = (self.p_load_full - 1j*self.q_load_full)/v**2
 		g_shunt = y_load.real
@@ -86,7 +106,211 @@ class DynamicSystem(PowerSystem):
 		y_gen = y11 - y12 @ inv(y22) @ y21
 		return y_gen
 
-	def dyn1_f(self, x, y):
+	def type1_init(self):
+		if not self.pf_initialized:
+			self.pf_init()
+		v = self.v
+		d = self.d
+		s = self.complex_injections(v, d)
+		s_l = self.p_load_full + 1j * self.q_load_full
+		s_g = s + s_l
+		Pm = s_g.real[self.pv]
+		Qg = s_g.imag[self.pv]
+		v_ = (v * np.exp(1j * d))  # voltage phasor
+		I_g = np.conj(s_g / v_)
+
+		th0 = np.array([0.7, 0.4, 0.3])
+		w0 = np.ones_like(th0)
+		Iq0 = (I_g[self.pv] * 1*np.exp(1j*(pi/2 - th0))).imag
+		Id0 = (I_g[self.pv] * 1*np.exp(1j*(pi/2 - th0))).real
+		Efd0 = v[self.pv]
+		x0 = np.r_[th0, w0, Id0, Iq0, Efd0]
+		init_dict = {}
+		def mismatch(x):
+			n = len(self.pv)
+
+			th = x[:n]
+			w = x[n:2*n]
+			Id = x[2*n:3*n]
+			Iq = x[3*n:4*n]
+			Efd = x[4*n:]
+			vd = v[self.pv] * sin(th - d[self.pv])
+			vq = v[self.pv] * cos(th - d[self.pv])
+			Pg = vd * Id + vq * Iq
+			Edp = vd - self.xqp * Iq
+			Eqp = vq + self.xdp * Id
+
+
+			th_dot = (w - 1) * self.ws
+			w_dot = 1 / (2 * self.H) * (Pm - Pg - self.Kd * (w - 1))  # Pg = vd * Id + vq * Iq
+			Eqp_dot = 1 / self.Td0 * (-Eqp - (self.xd - self.xdp) * Id + Efd)
+			Edp_dot = 1 / self.Tq0 * (-Edp + (self.xq - self.xqp) * Iq)
+			Qg_mis = vq * Id - vd * Iq - Qg
+			return np.r_[th_dot, w_dot, Eqp_dot, Edp_dot, Qg_mis]
+
+		x = fsolve(mismatch, x0)
+		#
+		n = len(self.pv)
+		th = x[:n]
+		w = x[n:2 * n]
+		Id = x[2 * n:3 * n]
+		Iq = x[3 * n:4 * n]
+		Efd = x[4 * n:]
+		vd = v[self.pv] * sin(th - d[self.pv])
+		vq = v[self.pv] * cos(th - d[self.pv])
+		vref = Efd/self.Ka + v[self.pv]
+		Edp = vd - self.xqp * Iq
+		Eqp = vq + self.xdp * Id
+		Pc = Pm/self.Ksg
+		init_dict['th'] = th
+		init_dict['Pg'] = Pm
+		init_dict['Qg'] = Qg
+		init_dict['Eqp'] = Eqp
+		init_dict['Edp'] = Edp
+		init_dict['Efd'] = Efd
+		init_dict['Pc'] = Pc
+		init_dict['vref'] = vref
+		return init_dict
+
+	def type1_init_bad(self):
+		v0, d0 = self.flat_start()
+		v, d, it = self.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False, verbose=False)
+		s = self.complex_injections(v, d)
+		s_l = self.p_load_full + 1j * self.q_load_full
+		s_g = s + s_l
+		Pm = s_g.real[self.pv]
+		v_ = (v * np.exp(1j * d))  # voltage phasor
+		I_g = np.conj(s_g / v_)
+		init_dict = {}
+		def mismatch(th, init_dict):
+			Id = (I_g[self.pv] * 1*np.exp(1j*(pi/2 - th))).real
+			Iq = (I_g[self.pv] * 1*np.exp(1j*(pi/2 - th))).imag
+			vd = v[self.pv] * sin(th - d[self.pv])
+			vq = v[self.pv] * cos(th - d[self.pv])
+			Pg = vd * Id + vq * Iq
+			Qg = vq * Id - vd * Iq
+			Efd = vq + self.xd * Id
+			Eqp = vq + self.xdp * Id  # Rs = 0
+			Edp = vd - self.xqp * Iq
+			Pc = Pm/self.Ksg
+			vref = Efd/self.Ka + v[self.pv]
+			'''
+			th_dot = (w - 1) * self.ws
+			w_dot = 1 / (2 * self.H) * (Pm - Pg - self.Kd * (w - 1))  # Pg = vd * Id + vq * Iq
+			Eqp_dot = 1 / self.Td0 * (-Eqp - (self.xd - self.xdp) * Id + Efd)
+			Edp_dot = 1 / self.Tq0 * (-Edp + (self.xq - self.xqp) * Iq)
+			Efd_dot = 1 / self.Ta * (-Efd + self.Ka * (vref - v[self.pv]))
+			Pm_dot = 1 / self.Tsg * (-Pm + self.Ksg * (Pc + 1 / self.R * (1 - w)))
+			'''
+			mis = Pm - Pg
+			# 0 = -Eqp(th) - (xd - xdp) * Id(th) + Efd(th)
+			# 0 = -Edp(th) + (xq - xqp) * Iq(th)
+			init_dict['Pg'] = Pg
+			init_dict['Qg'] = Qg
+			init_dict['Eqp'] = Eqp
+			init_dict['Edp'] = Edp
+			init_dict['Efd'] = Efd
+			init_dict['Pc'] = Pc
+			init_dict['vref'] = vref
+			return mis
+		th0 = d[self.pv]
+		th = fsolve(mismatch, th0, args=(init_dict))
+		init_dict['th'] = th
+		return init_dict
+
+	def type2_init(self):
+		if not self.pf_initialized:
+			self.pf_init()
+		v = self.v
+		d = self.d
+		s = self.complex_injections(v, d)
+		s_l = self.p_load_full + 1j * self.q_load_full
+		s_g = s + s_l
+		Pm = s_g.real[self.pv]
+		Qg = s_g.imag[self.pv]
+		v_ = (v * np.exp(1j * d))  # voltage phasor
+		I_g = np.conj(s_g / v_)
+
+		th0 = np.array([0.7, 0.4, 0.3])
+		w0 = np.ones_like(th0)
+		Iq0 = (I_g[self.pv] * 1 * np.exp(1j * (pi / 2 - th0))).imag
+		Id0 = (I_g[self.pv] * 1 * np.exp(1j * (pi / 2 - th0))).real
+		Efd0 = v[self.pv]
+		x0 = np.r_[th0, w0, Id0, Iq0, Efd0]
+		init_dict = {}
+
+		def mismatch(x):
+			n = len(self.pv)
+			th = x[:n]
+			w = x[n:2 * n]
+			Id = x[2 * n:3 * n]
+			Iq = x[3 * n:4 * n]
+			Efd = x[4 * n:]
+			vd = v[self.pv] * sin(th - d[self.pv])
+			vq = v[self.pv] * cos(th - d[self.pv])
+			Pg = vd * Id + vq * Iq
+			Edp = vd - self.xp * Iq
+			Eqp = vq + self.xp * Id
+
+			th_dot = (w - 1) * self.ws
+			w_dot = 1 / (2 * self.H) * (Pm - Pg - self.Kd * (w - 1))  # Pg = vd * Id + vq * Iq
+			Eqp_dot = 1 / self.Td0 * (-Eqp - (self.xd - self.xp) * Id + Efd)
+			Edp_dot = 1 / self.Tq0 * (-Edp + (self.xq - self.xp) * Iq)
+			Qg_mis = vq * Id - vd * Iq - Qg
+			return np.r_[th_dot, w_dot, Eqp_dot, Edp_dot, Qg_mis]
+
+		x = fsolve(mismatch, x0)
+		#
+		n = len(self.pv)
+		th = x[:n]
+		w = x[n:2 * n]
+		Id = x[2 * n:3 * n]
+		Iq = x[3 * n:4 * n]
+		Efd = x[4 * n:]
+		vd = v[self.pv] * sin(th - d[self.pv])
+		vq = v[self.pv] * cos(th - d[self.pv])
+		vref = Efd / self.Ka + v[self.pv]
+		Edp = vd - self.xp * Iq
+		Eqp = vq + self.xp * Id
+		Pc = Pm / self.Ksg
+		init_dict['th'] = th
+		init_dict['Pg'] = Pm
+		init_dict['Qg'] = Qg
+		init_dict['Eqp'] = Eqp
+		init_dict['Edp'] = Edp
+		init_dict['Efd'] = Efd
+		init_dict['Pc'] = Pc
+		init_dict['vref'] = vref
+		return init_dict
+
+	def type3_init(self):
+		if not self.pf_initialized:
+			self.pf_init()
+		v = self.v
+		d = self.d
+		s = self.complex_injections(v, d)
+		s_l = self.p_load_full + 1j * self.q_load_full
+		s_g = s + s_l
+		Pg = s_g.real[self.pv]
+		Qg = s_g.imag[self.pv]
+		v_ = (v * np.exp(1j * d))  # voltage phasor
+		I_g = np.conj(s_g / v_)
+		E = v_[self.pv] + 1j * self.xp * I_g[self.pv]
+
+
+		vgen = np.r_[v_[self.slack], E]
+		Igen = self.y_gen.dot(vgen)
+		Pe = (vgen * np.conj(Igen)).real[self.pv]
+
+		th = np.angle(E)
+		init_dict = {}
+		init_dict['Pg'] = Pg
+		init_dict['Qg'] = Qg
+		init_dict['E'] = np.abs(E)
+		init_dict['th'] = th
+		return init_dict
+
+	def dyn1_f(self, x, y, vref, Pc):
 		n = len(y) // 2 + 1
 		ng = len(self.ws) + 1
 		# unpack x
@@ -122,8 +346,8 @@ class DynamicSystem(PowerSystem):
 		w_dot = 1 / (2 * self.H) * (Pm - Pg - self.Kd * (w - 1))  # Pg = vd * Id + vq * Iq
 		Eqp_dot = 1 / self.Td0 * (-Eqp - (self.xd - self.xdp) * Id + Efd)
 		Edp_dot = 1 / self.Tq0 * (-Edp + (self.xq - self.xqp) * Iq)
-		va_dot = 1 / self.Ta * (-Efd + self.Ka * (self.vref - v[self.pv]))
-		Pm_dot = 1 / self.Tsg * (-Pm + self.Ksg * (self.Pc + 1 / self.R * (1 - w)))
+		va_dot = 1 / self.Ta * (-Efd + self.Ka * (vref - v[self.pv]))
+		Pm_dot = 1 / self.Tsg * (-Pm + self.Ksg * (Pc + 1 / self.R * (1 - w)))
 		x_dot = np.array([])
 		for i in range(ng - 1):
 			x_dot = np.r_[x_dot, th_dot[i], w_dot[i], Eqp_dot[i], Edp_dot[i], va_dot[i], Pm_dot[i]]
@@ -164,8 +388,8 @@ class DynamicSystem(PowerSystem):
 		Qg = np.zeros(len(self.pvpq))
 		Qg[self.pv - 1] = Qg_pv    # excludes slack bus
 
-		Pl = self.mw_load / self.p_base  # excludes slack bus
-		Ql =  self.bus_data[self.pvpq, self.busLoadMVAR] / self.p_base  # excludes slack bus
+		Pl = self.p_load(v)[self.pvpq]  # excludes slack bus
+		Ql = self.q_load(v)[self.pvpq]  # excludes slack bus
 
 		s = (v * np.exp(1j * d)) * np.conj(self.y_bus.dot(v * np.exp(1j * d)))
 		# S = P + jQ
@@ -176,32 +400,95 @@ class DynamicSystem(PowerSystem):
 		mis = np.concatenate((dp, dq))
 		return mis
 
-	def dyn1(self, z):
+	def dyn2_f(self, x, vref, Pc):
+		# n = len(y) // 2 + 1
+		ng = len(self.ws) + 1
+		# unpack x
+		th = np.array([])
+		w = np.array([])
+		Eqp = np.array([])
+		Edp = np.array([])
+		va = np.array([])
+		Pm = np.array([])
+		for i in range(ng - 1):
+			j = i * 6
+			th = np.r_[th, x[0 + j]]
+			w = np.r_[w, x[1 + j]]
+			Eqp = np.r_[Eqp, x[2 + j]]
+			Edp = np.r_[Edp, x[3 + j]]
+			va = np.r_[va, x[4 + j]]
+			Pm = np.r_[Pm, x[5 + j]]
+		Efd = va  # no limit equations
+
+		vgen = np.r_[self.v[self.slack], (Edp + 1j * Eqp) * (1 * np.exp(1j * (th - pi / 2)))]
+		Igen = self.y_gen.dot(vgen)
+		v = np.abs(vgen[1:] - Igen[1:] * 1j * self.xp)
+		Id = (Igen[self.pv] * np.exp(1j * (pi / 2 - th))).real
+		Iq = (Igen[self.pv] * np.exp(1j * (pi / 2 - th))).imag
+		Pe = vgen * np.conj(Igen)
+		Pe = Pe.real[self.pv]
+		# Pg = vd * Id + vq * Iq
+		# Qg = vq * Id - vd * Iq
+
+		# calculate x_dot
+		th_dot = (w - 1) * self.ws
+		w_dot = 1 / (2 * self.H) * (Pm - Pe - self.Kd * (w - 1))
+		Eqp_dot = 1 / self.Td0 * (-Eqp - (self.xd - self.xp) * Id + Efd)
+		Edp_dot = 1 / self.Tq0 * (-Edp + (self.xq - self.xp) * Iq)
+		va_dot = 1 / self.Ta * (-Efd + self.Ka * (vref - v))
+		Pm_dot = 1 / self.Tsg * (-Pm + self.Ksg * (Pc + 1 / self.R * (1 - w)))
+		x_dot = np.array([])
+		for i in range(ng - 1):
+			x_dot = np.r_[x_dot, th_dot[i], w_dot[i], Eqp_dot[i], Edp_dot[i], va_dot[i], Pm_dot[i]]
+		return x_dot
+
+	def dyn3_f(self, x, e_gen, Pm):
+		ng = len(self.ws) + 1
+		# unpack x
+		th = np.array([])
+		w = np.array([])
+		for i in range(ng - 1):
+			j = i * 2
+			th = np.r_[th, x[0 + j]]
+			w = np.r_[w, x[1 + j]]
+
+		vgen = np.r_[self.v[self.slack], e_gen * np.exp(1j * th)]
+		Igen = self.y_gen.dot(vgen)
+		Pe = (vgen * np.conj(Igen)).real[self.pv]
+		# calculate x_dot
+		th_dot = (w - 1) * self.ws
+		w_dot = 1 / (2 * self.H) * (Pm - Pe - self.Kd * (w - 1))
+		x_dot = np.array([])
+		for i in range(ng - 1):
+			x_dot = np.r_[x_dot, th_dot[i], w_dot[i]]
+		return x_dot
+
+	def dyn1(self, z, vref, Pc):
 		x = z[0:len(self.pv)*6]
 		y = z[len(self.pv)*6:]
-		x_dot = self.dyn1_f(x, y)
+		x_dot = self.dyn1_f(x, y, vref, Pc)
 		mis = self.dyn1_g(x, y)
 		return np.r_[x_dot, mis]
 
-	def A_dyn(self, x_eq, y_eq):
+	def A_dyn(self, x_eq, y_eq, vref, Pc):
 		A = np.zeros((len(x_eq), len(x_eq)))
 		dx = np.zeros(len(x_eq))
 		h = self.h
 		for i in range(len(x_eq)):
 			for j in range(len(x_eq)):
 				dx[j] = h
-				A[i, j] = (self.dyn1_f(x_eq + dx/2, y_eq)[i] - self.dyn1_f(x_eq - dx/2, y_eq)[i])/h
+				A[i, j] = (self.dyn1_f(x_eq + dx/2, y_eq, vref, Pc)[i] - self.dyn1_f(x_eq - dx/2, y_eq, vref, Pc)[i])/h
 				dx[j] = 0
 		return A
 
-	def B_dyn(self, x_eq, y_eq):
+	def B_dyn(self, x_eq, y_eq, vref, Pc):
 		B = np.zeros((len(x_eq), len(y_eq)))
 		dy = np.zeros(len(y_eq))
 		h = self.h
 		for i in range(len(x_eq)):
 			for j in range(len(y_eq)):
 				dy[j] = h
-				B[i, j] = (self.dyn1_f(x_eq, y_eq + dy/2)[i] - self.dyn1_f(x_eq, y_eq - dy/2)[i])/h
+				B[i, j] = (self.dyn1_f(x_eq, y_eq + dy/2, vref, Pc)[i] - self.dyn1_f(x_eq, y_eq - dy/2, vref, Pc)[i])/h
 				dy[j] = 0
 		return B
 
@@ -227,41 +514,45 @@ class DynamicSystem(PowerSystem):
 				dy[j] = 0
 		return D
 
-	def J_dyn(self, x_eq, y_eq):
-		A = self.A_dyn(x_eq, y_eq)
-		B = self.B_dyn(x_eq, y_eq)
+	def J_dyn1(self, x_eq, y_eq, vref, Pc):
+		A = self.A_dyn(x_eq, y_eq, vref, Pc)
+		B = self.B_dyn(x_eq, y_eq, vref, Pc)
 		C = self.C_dyn(x_eq, y_eq)
 		D = self.D_dyn(x_eq, y_eq)
 		J = A - B @ inv(D) @ C
 		return J
 
-	def dyn3_f(self, x, E_mag, Pm):
+	def J_dyn2(self, x_eq, vref, Pc):
+		J = np.zeros((len(x_eq), len(x_eq)))
+		dx = np.zeros(len(x_eq))
+		h = self.h
+		for i in range(len(x_eq)):
+			for j in range(len(x_eq)):
+				dx[j] = h
+				J[i, j] = (self.dyn2_f(x_eq + dx/2, vref, Pc)[i] - self.dyn2_f(x_eq - dx/2, vref, Pc)[i])/h
+				dx[j] = 0
+		return J
 
-		ng = len(self.ws) + 1
-		# unpack x
-		th = np.array([])
-		w = np.array([])
-		for i in range(ng - 1):
-			j = i * 2
-			th = np.r_[th, x[0 + j]]
-			w = np.r_[w, x[1 + j]]
-
-		# Calculate intermediate values
-		th_full = np.r_[0, th]
-		E = E_mag * np.exp(1j * th_full)
-		Pg = (E*np.conj(self.y_gen.dot(E))).real
-		# calculate x_dot
-		th_dot = (w - 1) * self.ws
-		w_dot = 1 / (2 * self.H) * (Pm - Pg[self.pv] - self.Kd * (w - 1))
-
-		x_dot = np.array([])
-		for i in range(ng - 1):
-			x_dot = np.r_[x_dot, th_dot[i], w_dot[i]]
-		return x_dot
-
+	def J_dyn3(self, x_eq, e_gen, Pm):
+		J = np.zeros((len(x_eq), len(x_eq)))
+		dx = np.zeros(len(x_eq))
+		h = self.h
+		for i in range(len(x_eq)):
+			for j in range(len(x_eq)):
+				dx[j] = h
+				J[i, j] = (self.dyn3_f(x_eq + dx/2, e_gen, Pm)[i] - self.dyn3_f(x_eq - dx/2, e_gen, Pm)[i])/h
+				dx[j] = 0
+		return J
 
 if __name__ == "__main__":  # TODO: Vref and Pref should be calculated during initialization
-	zbase_conv = 0.0008401596
+	# pbase_gen = 900*10**6
+	# vbase_gen = 20*10**3
+	# pbase_sys = 100*10**6
+	# vbase_sys = 230*10*3
+	# zbase_gen = vbase_gen**2/pbase_gen
+	# zbase_sys = vbase_sys**2/pbase_sys
+	# zbase_conv = zbase_gen/zbase_sys
+	zbase_conv = 1/9
 	sbase_conv = 9
 	ws = 2 * pi * 60
 	H = 6.5 * sbase_conv
@@ -305,14 +596,10 @@ if __name__ == "__main__":  # TODO: Vref and Pref should be calculated during in
 	# case_name = "2BUS.txt"
 	# case_name = 'KundurEx12-6.txt'
 	case_name = 'Kundur_modified.txt'
-	dps = DynamicSystem(case_name, udict, sparse=True)
+	dps = DynamicSystem(case_name, udict, sparse=False)
 	v0, d0 = dps.flat_start()
 	v_nr, d_nr, it = dps.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False, verbose=False)
 
-	# xsys = np.array([])
-	# xss = np.array([])
-	y = [d_nr, v_nr]
-	# print(y)
 	Ng = 4
 
 	th0 = d_nr[dps.pv]

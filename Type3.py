@@ -3,11 +3,11 @@ from dynamics import *
 
 if __name__ == "__main__":
 	case_name = 'Kundur_modified.txt'
-	zbase_conv = 0.0008401596
+	zbase_conv = 1/9
 	sbase_conv = 9
 	ws = 2 * pi * 60
 	H = 6.5 * sbase_conv
-	Kd = 0
+	Kd = 2
 	Td0 = 8
 	Tq0 = 0.4
 	xd = 1.8 * zbase_conv
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 		'xdp': np.array([xdp, xdp, xdp]),
 		'xq': np.array([xq, xq, xq]),
 		'xqp': np.array([xqp, xqp, xqp]),
-		'Rs': np.array([0, 0, 0]),
+		'Rs': np.array([Rs, Rs, Rs]),
 		'Ka': np.array([50, 50, 50]),
 		'Ta': np.array([0.01, 0.01, 0.01]),
 		'Vr_min': np.array([-4, -4, -4]),
@@ -47,22 +47,18 @@ if __name__ == "__main__":
 	dps = DynamicSystem(case_name, udict, sparse=False)
 	v0, d0 = dps.flat_start()
 	v, d, it = dps.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False, verbose=False)
-	gens = np.r_[dps.slack, dps.pv]
+	# gens = np.r_[dps.slack, dps.pv]
 	v_ = (v * np.exp(1j * d))  # voltage phasor
 	s = v_ * np.conj(dps.y_bus.dot(v_))
 	s_l = dps.p_load_full + 1j*dps.q_load_full
 	s_g = s + s_l
 	I_g = np.conj(s_g/(v_))
-	E_pv = v_[dps.pv] + 1j*dps.xp*I_g[dps.pv]
-	E = np.r_[v_[dps.slack], E_pv]  # only generator voltages
-	E_mag = np.abs(E)
+	E_pv = v_[dps.pv] + 1j*dps.xdp*I_g[dps.pv]
+	# E = np.r_[v_[dps.slack], E_pv]  # only generator voltages
+	# E_mag = np.abs(E)
 	Pm = s.real[dps.pv]
-	y_gen = dps.makeygen()
-	th0 = d[dps.pv]
-	w0 = np.ones(len(dps.pv)) - 0.5
-	x0 = np.array([])
-	for i in range(len(dps.pv)):
-		x0 = np.r_[x0, th0[i], w0[i]]
-	xe = fsolve(dps.dyn3_f, x0, args=(E_mag, Pm))
-	print(xe)
-	# print(d_nr*180/pi)
+	# y_gen = dps.makeygen()
+	th = np.angle(E_pv)
+	# w = np.ones(len(dps.pv))
+	print(th)
+	print('done')

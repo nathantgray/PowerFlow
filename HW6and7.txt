@@ -1,0 +1,25 @@
+Homework 6:
+
+For the Kundur system from the previous homeworks, we want to study the small-signal stability properties.
+Assume a first order exciter control model with KA=50  and TA = 0.01 sec.
+Assume Vrmin = -4 and VRmax = +4. Efdmin = 0 and Efdmax = 2.0.
+For the governor model, assume that Tsg = 100 and Ksg = 1 with Psgmin=0 and Psgmax = 1 pu. R=5%.
+Then carry out initialization and small-signal analysis for each of Type 1, 2 and 3 models.
+
+1) Starting from the power-flow solution, initialize the steady-state values of all the dynamic variables.
+2) Linearize the equations and find the system Jacobian matrix. You can use numerical differencing to compute the
+    Jacobian entries numerically.
+3) Find all eigenvalues and eigenvectors.
+4) Compute all the participation factors and analyze each mode.
+5) Design Power System Stabilizers (PSSs) as needed to render the damping ratios of all modes to be over 5% for each of
+    Type 1 and Type 2 models. Assume KD= 2 pu for Type 1 and Type 2 model.
+
+Homework 7:
+Assume the system parameters as from Homework 6. We want to study a fault on one of the transmission lines between
+buses 7 and 8. Assume a solid fault in the middle of the line. Assume Euler integration method with a step size of
+1 msec.
+1) For tc = 3 cycles, check if the system is stable.
+2) Find the critical clearing time.
+Repeat for each of Type 1, Type 2 and Type 3 models from your small-signal stability homework solutions.
+
+Homeworks 6 and 7 are due on Friday 5/1/20 at midnight.
