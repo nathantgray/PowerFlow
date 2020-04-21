@@ -542,6 +542,12 @@ class PowerSystem:
 		else:
 			return jacobian
 
+	def pf(self, prec=5, maxit=10, qlim=False, qlim_prec=2, verbose=True, debug_file=None):
+		v0, d0 = self.flat_start()
+		d0 = self.pf_dc(d0, self.y_bus, self.pvpq, self.psched)
+		v, d, it = self.pf_newtonraphson(v0, d0, prec=prec, maxit=maxit, qlim=qlim, qlim_prec=qlim_prec, verbose=verbose, debug_file=debug_file)
+		return v, d
+
 	def dslack_dx(self, v, d, pq):
 
 		y = self.y_bus
