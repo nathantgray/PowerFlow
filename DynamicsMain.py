@@ -15,25 +15,22 @@ if __name__ == "__main__":
 	xq = 1.7 * zbase_conv
 	xqp = 0.55 * zbase_conv
 	Rs = 0  # 0.0025 * zbase_conv
+	H1 = 6.5 * sbase_conv
+	H3 = 6.175 * sbase_conv
 	# Washout filter
 	tw = 10
 	# lead compensator
-	k1 = 20
-	wmax = 1  # omega where phase angle is maximum
-	wmag = 1  # maximum phase shift
+	k1 = 40
+	wmax = 20  # omega where phase angle is maximum
+	wmag = 11*pi/2  # maximum phase shift
 	b = 1/wmag**2
 	t1 = 1/(wmax*np.sqrt(b))
 	t2 = t1*b
-	#
-	H1 = 6.5 * sbase_conv
-	H3 = 6.175 * sbase_conv
 
-	# vref = ps.bus_data[ps.pv, ps.busDesiredVolts]
-	# Pc = ps.bus_data[ps.pv, ps.busGenMW]/ps.p_base
 	udict = {
 		'ws': np.array([ws, ws, ws]),
 		'H': np.array([H1, H3, H3]),
-		'Kd': np.array([2, 2, 2]),
+		'Kd': np.array([Kd, Kd, Kd]),
 		'Td0': np.array([Td0, Td0, Td0]),
 		'Tq0': np.array([Tq0, Tq0, Tq0]),
 		'xd': np.array([xd, xd, xd]),
@@ -102,7 +99,6 @@ if __name__ == "__main__":
 		x3 = np.r_[x3, th3[i], w3[i]]
 	x_dot = dps.dyn3_f(x3, E3, Pm3)
 	print('Type 3 max error', np.max(np.abs(x_dot)))
-	print(x_dot)
 	# Check type 1 with compensation
 	vw = np.array([0, 0, 0])
 	vs = np.array([0, 0, 0])
@@ -168,7 +164,7 @@ if __name__ == "__main__":
 	p_f1 = np.zeros_like(J1)
 	print('\n-----Type 1-----')
 	for k in range(len(x1)):
-		print('***Mode:', k, ', Damping:', round(damp1[k], 2), ', Freq:', round(f1[k], 2))
+		print('***Mode:', k, ', Damping:', round(damp1[k], 3), ', Freq:', round(f1[k], 3))
 		for i in range(len(x1)):
 			p_f1[i, k] = np.abs(vr1[i, k]) * np.abs(w1[k, i]) / np.max(np.abs(vr1[:, k] * w1[k, :]))
 			if p_f1[i, k] > threshold:
@@ -177,7 +173,7 @@ if __name__ == "__main__":
 	print('\n-----Type 2-----')
 	p_f2 = np.zeros_like(J2)
 	for k in range(len(x2)):
-		print('***Mode:', k, ', Damping:', damp2[k], ', Freq:', f2[k])
+		print('***Mode:', k, ', Damping:', round(damp2[k], 3), ', Freq:', round(f2[k],3))
 		for i in range(len(x2)):
 			p_f2[i, k] = np.abs(vr2[i, k]) * np.abs(w2[k, i]) / np.max(np.abs(vr2[:, k] * w2[k, :]))
 			if p_f2[i, k] > threshold:
@@ -187,7 +183,7 @@ if __name__ == "__main__":
 	print('\n-----Type 3-----')
 	p_f3 = np.zeros_like(J3)
 	for k in range(len(x3)):
-		print('***Mode:', k, ', Damping:', damp3[k], ', Freq:', f3[k])
+		print('***Mode:', k, ', Damping:', round(damp3[k], 3), ', Freq:', round(f3[k], 3))
 		for i in range(len(x3)):
 			p_f3[i, k] = np.abs(vr3[i, k]) * np.abs(w3[k, i]) / np.max(np.abs(vr3[:, k] * w3[k, :]))
 			if p_f3[i, k] > threshold:
@@ -197,7 +193,7 @@ if __name__ == "__main__":
 	p_f1_comp = np.zeros_like(J1_comp)
 	print('\n-----Type 1 with Compensation-----')
 	for k in range(len(x1)):
-		print('***Mode:', k, ', Damping:', damp1_comp[k], ', Freq:', f1_comp[k])
+		print('***Mode:', k, ', Damping:', round(damp1_comp[k], 3), ', Freq:', round(f1_comp[k], 3))
 		for i in range(len(x1)):
 			p_f1_comp[i, k] = np.abs(vr1_comp[i, k]) * np.abs(w1_comp[k, i]) / np.max(np.abs(vr1_comp[:, k] * w1_comp[k, :]))
 			if p_f1_comp[i, k] > threshold:
@@ -207,7 +203,7 @@ if __name__ == "__main__":
 	p_f2_comp = np.zeros_like(J2_comp)
 	print('\n-----Type 2 with Compensation-----')
 	for k in range(len(x1)):
-		print('***Mode:', k, ', Damping:', damp2_comp[k], ', Freq:', f2_comp[k])
+		print('***Mode:', k, ', Damping:', round(damp2_comp[k], 3), ', Freq:', round(f2_comp[k], 3))
 		for i in range(len(x1)):
 			p_f2_comp[i, k] = np.abs(vr2_comp[i, k]) * np.abs(w2_comp[k, i]) / np.max(np.abs(vr2_comp[:, k] * w2_comp[k, :]))
 			if p_f2_comp[i, k] > threshold:
@@ -237,8 +233,8 @@ if __name__ == "__main__":
 	ctrl.bode_plot(Gw, omega_num=400, omega_limits=(0.1, 2*pi*60))
 	ctrl.bode_plot(Gs_comp, omega_num=400, omega_limits=(0.1, 2*pi*60))
 
-	ctrl.pzmap(Gs)
-	ctrl.pzmap(Gs_comp)
+	# ctrl.pzmap(Gs)
+	# ctrl.pzmap(Gs_comp)
 	# s = ctrl.tf('s')
 	# G = np.linalg.det(s*np.eye(J1.shape[0]) - J1)
 
@@ -278,6 +274,15 @@ if __name__ == "__main__":
 	# ax.legend()
 	#
 	# plt.show()
-
+	A = dps.A_dyn(x1, y, type1['vref'], type1['Pc'])
+	B = dps.B_dyn(x1, y, type1['vref'], type1['Pc'])
+	C = dps.C_dyn(x1, y)
+	D = dps.D_dyn(x1, y)
+	A_pss = dps.A_dyn_comp(x1_comp, y, type1['vref'], type1['Pc'])
+	B_pss = dps.B_dyn_comp(x1_comp, y, type1['vref'], type1['Pc'])
+	C_pss = dps.C_dyn(x1_comp, y)
+	D_pss = dps.D_dyn(x1_comp, y)
+	print('type 1 min damping w/PSS:', np.min(damp1_comp))
+	print('type 2 min damping w/PSS:', np.min(damp2_comp))
 	print('end')
 

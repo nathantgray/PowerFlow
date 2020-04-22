@@ -357,13 +357,13 @@ class DynamicSystem(PowerSystem):
 		w_dot = 1 / (2 * self.H) * (Pm - Pg - self.Kd * (w - 1))  # Pg = vd * Id + vq * Iq
 		# Power System Stabilizer
 		#  - Washout Filter
-		vw_dot = 1/self.Tw*(w_dot*self.Tw - vw)
+		vw_dot = 1/self.Tw*(-w_dot*self.Tw*self.K1 - vw)
 		#  - Compensator
-		vs_dot = 1/self.T2*(vw*self.K1+vw_dot*self.K1*self.T1 - vs)
+		vs_dot = 1/self.T2*(vw+vw_dot*self.T1 - vs)
 		# 
 		Eqp_dot = 1 / self.Td0 * (-Eqp - (self.xd - self.xdp) * Id + Efd)
 		Edp_dot = 1 / self.Tq0 * (-Edp + (self.xq - self.xqp) * Iq)
-		va_dot = 1 / self.Ta * (-Efd + self.Ka * (vref - v[self.pv] + self.comp*vs))
+		va_dot = 1 / self.Ta * (-Efd + self.Ka * (vref - v[self.pv] - vs))
 		Pm_dot = 1 / self.Tsg * (-Pm + self.Ksg * (Pc + 1 / self.R * (1 - w)))
 		x_dot = np.array([])
 		for i in range(ng - 1):
@@ -425,6 +425,53 @@ class DynamicSystem(PowerSystem):
 		Pm = np.array([])
 		for i in range(ng - 1):
 			j = i * 6
+			th = np.r_[th, x[0 + j]]
+			w = np.r_[w, x[1 + j]]
+			Eqp = np.r_[Eqp, x[2 + j]]
+			Edp = np.r_[Edp, x[3 + j]]
+			va = np.r_[va, x[4 + j]]
+			Pm = np.r_[Pm, x[5 + j]]
+		Efd = va  # no limit equations
+		# unpack y
+		d = np.r_[0, y[0:n - 1]]
+		v = np.r_[self.vslack, y[n - 1:]]
+
+		# Calculate intermediate values
+		vd = v[self.pv] * sin(th - d[self.pv])
+		vq = v[self.pv] * cos(th - d[self.pv])
+		Id = (Eqp - vq) / self.xdp
+		Iq = -(Edp - vd) / self.xqp
+		Pg_pv = vd * Id + vq * Iq  # only PV buses included
+		Qg_pv = vq * Id - vd * Iq  # only PV buses included
+		Pg = np.zeros(len(self.pvpq))
+		Pg[self.pv - 1] = Pg_pv    # excludes slack bus
+		Qg = np.zeros(len(self.pvpq))
+		Qg[self.pv - 1] = Qg_pv    # excludes slack bus
+
+		Pl = self.p_load(v)[self.pvpq]  # excludes slack bus
+		Ql = self.q_load(v)[self.pvpq]  # excludes slack bus
+
+		s = (v * np.exp(1j * d)) * np.conj(self.y_bus.dot(v * np.exp(1j * d)))
+		# S = P + jQ
+		pcalc = s[self.pvpq].real
+		qcalc = s[self.pvpq].imag
+		dp = Pg - Pl - pcalc
+		dq = Qg - Ql - qcalc
+		mis = np.concatenate((dp, dq))
+		return mis
+
+	def dyn1_g_comp(self, x, y):
+		n = len(y) // 2 + 1
+		ng = len(self.ws) + 1
+		# unpack x
+		th = np.array([])
+		w = np.array([])
+		Eqp = np.array([])
+		Edp = np.array([])
+		va = np.array([])
+		Pm = np.array([])
+		for i in range(ng - 1):
+			j = i * 8
 			th = np.r_[th, x[0 + j]]
 			w = np.r_[w, x[1 + j]]
 			Eqp = np.r_[Eqp, x[2 + j]]
@@ -638,6 +685,18 @@ class DynamicSystem(PowerSystem):
 				dx[j] = 0
 		return C
 
+	def C_dyn_comp(self, x_eq, y_eq):
+		C = np.zeros((len(y_eq), len(x_eq)))
+		dx = np.zeros(len(x_eq))
+		h = self.h
+		for i in range(len(y_eq)):
+			for j in range(len(x_eq)):
+				dx[j] = h
+				C[i, j] = (self.dyn1_g_comp(x_eq + dx/2, y_eq)[i] - self.dyn1_g_comp(x_eq - dx/2, y_eq)[i])/h
+				dx[j] = 0
+		return C
+
+
 	def D_dyn(self, x_eq, y_eq):
 		D = np.zeros((len(y_eq), len(y_eq)))
 		dy = np.zeros(len(y_eq))
@@ -646,6 +705,17 @@ class DynamicSystem(PowerSystem):
 			for j in range(len(y_eq)):
 				dy[j] = h
 				D[i, j] = (self.dyn1_g(x_eq, y_eq + dy/2)[i] - self.dyn1_g(x_eq, y_eq - dy/2)[i])/h
+				dy[j] = 0
+		return D
+
+	def D_dyn_comp(self, x_eq, y_eq):
+		D = np.zeros((len(y_eq), len(y_eq)))
+		dy = np.zeros(len(y_eq))
+		h = self.h
+		for i in range(len(y_eq)):
+			for j in range(len(y_eq)):
+				dy[j] = h
+				D[i, j] = (self.dyn1_g_comp(x_eq, y_eq + dy/2)[i] - self.dyn1_g_comp(x_eq, y_eq - dy/2)[i])/h
 				dy[j] = 0
 		return D
 
@@ -660,8 +730,8 @@ class DynamicSystem(PowerSystem):
 	def J_dyn1_comp(self, x_eq, y_eq, vref, Pc):
 		A = self.A_dyn_comp(x_eq, y_eq, vref, Pc)
 		B = self.B_dyn_comp(x_eq, y_eq, vref, Pc)
-		C = self.C_dyn(x_eq, y_eq)
-		D = self.D_dyn(x_eq, y_eq)
+		C = self.C_dyn_comp(x_eq, y_eq)
+		D = self.D_dyn_comp(x_eq, y_eq)
 		J = A - B @ inv(D) @ C
 		return J
 
