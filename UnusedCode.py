@@ -608,3 +608,27 @@ if __name__ == "__main__":  # TODO: Vref and Pref should be calculated during in
 # ax.legend()
 #
 # plt.show()
+
+
+
+
+		if va[i] == Vr_max[i] and va_dot_unlim[i] > 0:
+			va_dot[i] = 0
+		elif va[i] == Vr_min[i] and va_dot_unlim[i] < 0:
+			va_dot[i] = 0
+		else:
+			va_dot[i] = va_dot_unlim
+
+		if va[i] > Efd_max:
+			Efd[i] = Efd_max
+		elif va[i] < Efd_min:
+			Efd[i] = Efd_min
+		else:
+			Efd[i] = va[i]
+
+		if Pm[i] == Psg_min[i] and Psg_dot_unlim[i] < 0:
+			Pm_dot[i] = 0
+		if Psg[i] == Psg_max[i] and Psg_dot_unlim[i] > 0:
+			Pm_dot[i] = 0
+		else:
+			Pm_dot[i] = Psg_dot_unlim[i]

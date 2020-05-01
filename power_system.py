@@ -53,6 +53,7 @@ class PowerSystem:
 		self.mvar_load = self.bus_data[self.pq, self.busLoadMVAR]
 		self.mw_gen_full = self.bus_data[:, self.busGenMW]
 		self.mw_load_full = self.bus_data[:, self.busLoadMW]
+		self.p_gen_full = self.mw_gen_full / self.p_base
 		self.mvar_load_full = self.bus_data[:, self.busLoadMVAR]
 		self.p_load_full = self.mw_load_full / self.p_base
 		self.q_load_full = self.mvar_load_full / self.p_base
@@ -542,9 +543,12 @@ class PowerSystem:
 		else:
 			return jacobian
 
-	def pf(self, prec=5, maxit=10, qlim=False, qlim_prec=2, verbose=True, debug_file=None):
-		v0, d0 = self.flat_start()
-		d0 = self.pf_dc(d0, self.y_bus, self.pvpq, self.psched)
+	def pf(self, initial=None, prec=5, maxit=10, qlim=False, qlim_prec=2, verbose=True, debug_file=None):
+		if initial is None:
+			v0, d0 = self.flat_start()
+		else:
+			v0, d0 = initial
+		# d0 = self.pf_dc(d0, self.y_bus, self.pvpq, self.psched)
 		v, d, it = self.pf_newtonraphson(v0, d0, prec=prec, maxit=maxit, qlim=qlim, qlim_prec=qlim_prec, verbose=verbose, debug_file=debug_file)
 		return v, d
 
@@ -1068,7 +1072,7 @@ class PowerSystem:
 		return np.r_[self.psched_full[1:] - p[1:], self.qsched_full[1:] - q[1:]]
 
 	def nr(self, func, x0, fprime, maxit=10, prec=3, verbose=True):
-		x =deepcopy(x0)
+		x = deepcopy(x0)
 		for i in range(maxit + 1):
 			# Calculate Mismatches
 			mis = func(x)
@@ -1085,6 +1089,17 @@ class PowerSystem:
 			dx = mat_solve(j, mis)
 			# Update angles: d_(n+1) = d_n + dd
 			x = x - dx
+
+	def diff(self, func, x_eq):
+		mat = np.zeros((len(x_eq), len(x_eq)))
+		dx = np.zeros(len(x_eq))
+		h = 1e-8
+		for i in range(len(x_eq)):
+			for j in range(len(x_eq)):
+				dx[j] = h
+				mat[i, j] = (func(x_eq + dx / 2)[i] - func(x_eq - dx / 2)[i]) / h
+				dx[j] = 0
+		return mat
 
 if __name__ == "__main__":
 	import matplotlib.pyplot as plt

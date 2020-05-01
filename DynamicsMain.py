@@ -1,63 +1,10 @@
 from dynamics import *
 import control as ctrl
-
+import pandas as pd
+from KundurDynInit import *
 if __name__ == "__main__":
 	case_name = 'Kundur_modified.txt'
-	zbase_conv = 1/9
-	sbase_conv = 9
-	ws = 2 * pi * 60
-	H = 6.5 * sbase_conv
-	Kd = 2 * sbase_conv
-	Td0 = 8
-	Tq0 = 0.4
-	xd = 1.8 * zbase_conv
-	xdp = 0.3 * zbase_conv
-	xq = 1.7 * zbase_conv
-	xqp = 0.55 * zbase_conv
-	Rs = 0  # 0.0025 * zbase_conv
-	H1 = 6.5 * sbase_conv
-	H3 = 6.175 * sbase_conv
-	# Washout filter
-	tw = 10
-	# lead compensator
-	k1 = 40
-	wmax = 20  # omega where phase angle is maximum
-	wmag = 11*pi/2  # maximum phase shift
-	b = 1/wmag**2
-	t1 = 1/(wmax*np.sqrt(b))
-	t2 = t1*b
 
-	udict = {
-		'ws': np.array([ws, ws, ws]),
-		'H': np.array([H1, H3, H3]),
-		'Kd': np.array([Kd, Kd, Kd]),
-		'Td0': np.array([Td0, Td0, Td0]),
-		'Tq0': np.array([Tq0, Tq0, Tq0]),
-		'xd': np.array([xd, xd, xd]),
-		'xdp': np.array([xdp, xdp, xdp]),
-		'xq': np.array([xq, xq, xq]),
-		'xqp': np.array([xqp, xqp, xqp]),
-		'Rs': np.array([Rs, Rs, Rs]),
-		'Ka': np.array([50, 50, 50]),
-		'Ta': np.array([0.01, 0.01, 0.01]),
-		'Vr_min': np.array([-4, -4, -4]),
-		'Vr_max': np.array([4, 4, 4]),
-		'Efd_min': np.array([0, 0, 0]),
-		'Efd_max': np.array([2, 2, 2]),
-		'Tsg': np.array([100, 100, 100]),
-		'Ksg': np.array([1, 1, 1]),
-		'Psg_min': np.array([0, 0, 0]),
-		'Psg_max': np.array([1, 1, 1]),
-		'R': np.array([0.05, 0.05, 0.05]),
-		'Tw': np.array([tw, tw, tw]),  # Typically between 1 and 20 seconds. Kundur pg 1133
-		'K1': np.array([k1, k1, k1]),
-		'T1': np.array([t1, t1, t1]),
-		'T2': np.array([t2, t2, t2]),
-		'comp': np.array([1, 1, 1]),
-		'constZ': 0.5,
-		'constP': 0.5,
-		'constI': 0
-	}
 	dps = DynamicSystem(case_name, udict, sparse=False)
 	v0, d0 = dps.flat_start()
 	v, d, it = dps.pf_newtonraphson(v0, d0, prec=7, maxit=10, qlim=False, verbose=False)
@@ -148,6 +95,7 @@ if __name__ == "__main__":
 	damp1_comp = zeta1_comp * -100
 	damp2_comp = zeta2_comp * -100
 
+
 	threshold = 0.01
 	states1 = ['th2', 'w2', 'Eqp2', 'Edp2', 'Efd2', 'Pm2',
 			  'th3', 'w3', 'Eqp3', 'Edp3', 'Efd3', 'Pm3',
@@ -161,54 +109,85 @@ if __name__ == "__main__":
 	states_pss = ['th2', 'w2', 'Eqp2', 'Edp2', 'Efd2', 'Pm2', 'vw2', 'vs2',
 			  'th3', 'w3', 'Eqp3', 'Edp3', 'Efd3', 'Pm3', 'vw3', 'vs3',
 			  'th4', 'w4', 'Eqp4', 'Edp4', 'Efd4', 'Pm4', 'vw4', 'vs4']
+	d = {"Eigenvalue": np.round(ev1, 4), "Freq (Hz)": np.round(f1, 3), "Damping %": np.round(damp1, 3)}
 	p_f1 = np.zeros_like(J1)
 	print('\n-----Type 1-----')
 	for k in range(len(x1)):
-		print('***Mode:', k, ', Damping:', round(damp1[k], 3), ', Freq:', round(f1[k], 3))
+		print('***Mode:', k, ', Damping:', round(damp1[k], 3), ', Freq:', round(f1[k], 3), ', ', round(ev1[k], 4))
 		for i in range(len(x1)):
 			p_f1[i, k] = np.abs(vr1[i, k]) * np.abs(w1[k, i]) / np.max(np.abs(vr1[:, k] * w1[k, :]))
-			if p_f1[i, k] > threshold:
+			if p_f1[i, k] > threshold and i%6==0:
 				print(states1[i], ':', round(p_f1[i, k], 2), sep='', end=' ')
 		print('\n')
+	d["G2"]=np.round(p_f1[0, :], 2)
+	d["G3"]=np.round(p_f1[6, :], 2)
+	d["G4"]=np.round(p_f1[12, :], 2)
+	df1 = pd.DataFrame(d)
+	df1.to_csv('Type1_response.csv')
+
 	print('\n-----Type 2-----')
+	d = {"Eigenvalue": np.round(ev2, 4), "Freq (Hz)": np.round(f2, 3), "Damping %": np.round(damp2, 3)}
 	p_f2 = np.zeros_like(J2)
 	for k in range(len(x2)):
-		print('***Mode:', k, ', Damping:', round(damp2[k], 3), ', Freq:', round(f2[k],3))
+		print('***Mode:', k, ', Damping:', round(damp2[k], 3), ', Freq:', round(f2[k],3), ', ', round(ev2[k], 4))
 		for i in range(len(x2)):
 			p_f2[i, k] = np.abs(vr2[i, k]) * np.abs(w2[k, i]) / np.max(np.abs(vr2[:, k] * w2[k, :]))
-			if p_f2[i, k] > threshold:
+			if p_f2[i, k] > threshold and i%6==0:
 				print(states2[i], ':', round(p_f2[i, k], 2), sep='', end=' ')
 		print('\n')
+	d["G2"]=np.round(p_f2[0, :], 2)
+	d["G3"]=np.round(p_f2[6, :], 2)
+	d["G4"]=np.round(p_f2[12, :], 2)
+	df2 = pd.DataFrame(d)
+	df2.to_csv('Type2_response.csv')
 
 	print('\n-----Type 3-----')
+	d = {"Eigenvalue": np.round(ev3, 4), "Freq (Hz)": np.round(f3, 3), "Damping %": np.round(damp3, 3)}
 	p_f3 = np.zeros_like(J3)
 	for k in range(len(x3)):
-		print('***Mode:', k, ', Damping:', round(damp3[k], 3), ', Freq:', round(f3[k], 3))
+		print('***Mode:', k, ', Damping:', round(damp3[k], 3), ', Freq:', round(f3[k], 3), ', ', round(ev3[k], 4))
 		for i in range(len(x3)):
 			p_f3[i, k] = np.abs(vr3[i, k]) * np.abs(w3[k, i]) / np.max(np.abs(vr3[:, k] * w3[k, :]))
 			if p_f3[i, k] > threshold:
 				print(states3[i], ':', round(p_f3[i, k], 2), sep='', end=' ')
 		print('\n')
+	d["G2"]=np.round(p_f3[0, :], 2)
+	d["G3"]=np.round(p_f3[2, :], 2)
+	d["G4"]=np.round(p_f3[4, :], 2)
+	df3 = pd.DataFrame(d)
+	df3.to_csv('Type3_response.csv')
 
 	p_f1_comp = np.zeros_like(J1_comp)
 	print('\n-----Type 1 with Compensation-----')
-	for k in range(len(x1)):
-		print('***Mode:', k, ', Damping:', round(damp1_comp[k], 3), ', Freq:', round(f1_comp[k], 3))
-		for i in range(len(x1)):
+	d = {"Eigenvalue": np.round(ev1_comp, 4), "Freq (Hz)": np.round(f1_comp, 3), "Damping %": np.round(damp1_comp, 3)}
+	for k in range(len(x1_comp)):
+		print('***Mode:', k, ', Damping:', round(damp1_comp[k], 3), ', Freq:', round(f1_comp[k], 3), ', ', round(ev1_comp[k], 4))
+		for i in range(len(x1_comp)):
 			p_f1_comp[i, k] = np.abs(vr1_comp[i, k]) * np.abs(w1_comp[k, i]) / np.max(np.abs(vr1_comp[:, k] * w1_comp[k, :]))
-			if p_f1_comp[i, k] > threshold:
+			if p_f1_comp[i, k] > threshold and i%8==0:
 				print(states_pss[i], ':', round(p_f1_comp[i, k], 2), sep='', end=' ')
 		print('\n')
+	d["G2"]=np.round(p_f1_comp[0, :], 2)
+	d["G3"]=np.round(p_f1_comp[8, :], 2)
+	d["G4"]=np.round(p_f1_comp[16, :], 2)
+	df1_comp = pd.DataFrame(d)
+	df1_comp.to_csv('Type1_PSS_response.csv')
 
 	p_f2_comp = np.zeros_like(J2_comp)
 	print('\n-----Type 2 with Compensation-----')
-	for k in range(len(x1)):
-		print('***Mode:', k, ', Damping:', round(damp2_comp[k], 3), ', Freq:', round(f2_comp[k], 3))
-		for i in range(len(x1)):
+	d = {"Eigenvalue": np.round(ev2_comp, 4), "Freq (Hz)": np.round(f2_comp, 3), "Damping %": np.round(damp2_comp, 3)}
+	for k in range(len(x2_comp)):
+		print('***Mode:', k, ', Damping:', round(damp2_comp[k], 3), ', Freq:', round(f2_comp[k], 3), ', ', round(ev2_comp[k], 4))
+		for i in range(len(x2_comp)):
 			p_f2_comp[i, k] = np.abs(vr2_comp[i, k]) * np.abs(w2_comp[k, i]) / np.max(np.abs(vr2_comp[:, k] * w2_comp[k, :]))
 			if p_f2_comp[i, k] > threshold:
 				print(states_pss[i], ':', round(p_f2_comp[i, k], 2), sep='', end=' ')
 		print('\n')
+	d["G2"]=np.round(p_f2_comp[0, :], 2)
+	d["G3"]=np.round(p_f2_comp[8, :], 2)
+	d["G4"]=np.round(p_f2_comp[16, :], 2)
+	df2_comp = pd.DataFrame(d)
+	df2_comp.to_csv('Type2_PSS_response.csv')
 
 	E = np.zeros((J1.shape[0], 1))
 	E[4, 0] = dps.Ka[0]/dps.Ta[0]
